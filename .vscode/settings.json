@@ -1,0 +1,9 @@
+{
+  "eslint.validate": [
+    "javascript",
+    "typescript",
+    "yaml",
+    "github-actions-workflow"
+  ],
+  "npm.packageManager": "pnpm",
+}
