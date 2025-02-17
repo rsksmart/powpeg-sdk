@@ -7,7 +7,7 @@ import eslintPluginYml from 'eslint-plugin-yml'
 /** @type {import('eslint').Linter.Config[]} */
 export default [
   { files: ['**/*.{js,mjs,cjs,ts}'] },
-  { ignores: ['dist'] },
+  { ignores: ['dist', 'pnpm-lock.yaml'] },
   { languageOptions: { globals: { ...globals.browser } } },
   pluginJs.configs.recommended,
   ...tseslint.configs.recommended,
