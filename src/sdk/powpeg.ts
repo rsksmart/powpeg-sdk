@@ -5,7 +5,6 @@ import { Bridge } from '../bridge'
 import * as sdkErrors from '../errors'
 
 export class PowPegSDK {
-  private maxBundleSize = 10
   private txHeaderSizeInBytes = 13
   private txOutputSizeInBytes = 32
   private txInputSizeInBytes = 145
@@ -23,12 +22,14 @@ export class PowPegSDK {
    * @param {BitcoinDataSource} bitcoinDataSource - An instance of a class that implements the BitcoinDataSource interface.
    * @param {Network} network - The network to use. Either 'mainnet' or 'testnet'.
    * @param {string} rpcProviderUrl - URL of either your own Rootstock node, the Rootstock RPC API or a third-party node provider. If not provided, it will default to the Rootstock public node for the specified network.
+   * @param {number} maxBundleSize - The maximum number of addresses to ask for while creating a peg-in transaction. Defaults to 10.
    */
   constructor(
     private bitcoinSigner: BitcoinSigner,
     private bitcoinDataSource: BitcoinDataSource,
     private network: Network,
     rpcProviderUrl?: string,
+    private maxBundleSize = 10,
   ) {
     this.bitcoinJsNetwork = network === 'mainnet' ? networks.bitcoin : networks.testnet
     this.bridge = new Bridge(network, rpcProviderUrl)

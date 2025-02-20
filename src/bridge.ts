@@ -3,7 +3,7 @@ import { ethers } from 'ethers'
 import type { Network } from './types'
 
 export class Bridge {
-  provider: ethers.JsonRpcProvider
+  provider: ethers.Provider
   bridgeContract: ethers.Contract
   publicNodes: Record<Network, string> = {
     mainnet: 'https://public-node.rsk.co',
