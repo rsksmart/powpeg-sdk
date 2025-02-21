@@ -90,19 +90,16 @@ export class PowPegSDK {
   }
 
   private getRskOutput(recipientAddress: string, refundAddress?: string) {
-    let output = `${this.powpegRsktHeader + remove0x(recipientAddress)}`
+    let output = `${this.powpegRsktHeader}${remove0x(recipientAddress)}`
     if (refundAddress) {
       const refundAddressType = getAddressType(refundAddress, this.network)
-      const hash = address.fromBase58Check(refundAddress).hash.toString('hex')
-      switch (refundAddressType) {
-        case 'LEGACY':
-          output += `01${hash}`
-          break
-        case 'SEGWIT':
-          output += `02${hash}`
-          break
-        default:
-          break
+      const prefixes = {
+        LEGACY: '01',
+        SEGWIT: '02',
+      }
+      if (refundAddressType === 'LEGACY' || refundAddressType === 'SEGWIT') {
+        const hash = address.fromBase58Check(refundAddress).hash.toString('hex')
+        output += `${prefixes[refundAddressType]}${hash}`
       }
     }
     return Buffer.from(output, 'hex')
