@@ -11,8 +11,8 @@ dependencies:
     specifier: ^6.29.4
     version: 6.29.4
   '@rsksmart/rsk-precompiled-abis':
-    specifier: 6.0.0-ARROWHEAD
-    version: 6.0.0-ARROWHEAD
+    specifier: 7.1.0-LOVELL
+    version: 7.1.0-LOVELL
   '@trezor/connect-web':
     specifier: ^9.5.1
     version: 9.5.1(fastestsmallesttextencoderdecoder@1.0.22)(tslib@2.7.0)(typescript@5.8.2)(ws@8.18.1)
@@ -1064,8 +1064,8 @@ packages:
     dev: true
     optional: true
 
-  /@rsksmart/rsk-precompiled-abis@6.0.0-ARROWHEAD:
-    resolution: {integrity: sha512-+g22mIXjdTHoakCXnjttA9MMJMVyYzZ8VsAL4bMPeTZ8kn9OCZBpXkAtCsXkDCGeYCgrWD9F3VS59vBb/AOdGA==}
+  /@rsksmart/rsk-precompiled-abis@7.1.0-LOVELL:
+    resolution: {integrity: sha512-tpNnWXOCYTJG+EMo5bGpkXnyLdRLJ2f7316Lwu+LquQkAS7COQAlBjZn5vTHx3Y1pzAoC8Ylw8r3X0Rlzh87wA==}
     dev: false
 
   /@scure/base@1.1.9:
