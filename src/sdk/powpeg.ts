@@ -40,7 +40,7 @@ export class PowPegSDK {
   }
 
   private async getAddressesWithDetails(addresses: string[]) {
-    return Promise.all(addresses.map(address => this.bitcoinDataSource.getAddressDetails(address)))
+    return Promise.all(addresses.map((address) => this.bitcoinDataSource.getAddressDetails(address)))
   }
 
   private groupAddressesByUsage(addresses: AddressWithDetails[]) {
@@ -162,7 +162,7 @@ export class PowPegSDK {
         value: change,
       })
     }
-    const hexTransactions = await Promise.all(inputs.map(input => this.bitcoinDataSource.getTxHex(input.txid)))
+    const hexTransactions = await Promise.all(inputs.map((input) => this.bitcoinDataSource.getTxHex(input.txid)))
     inputs.forEach((input, index) => {
       const transaction = Transaction.fromHex(hexTransactions[index])
       psbt.addInput({
