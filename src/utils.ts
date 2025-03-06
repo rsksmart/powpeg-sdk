@@ -5,12 +5,12 @@ export function remove0x(hex: string) {
 }
 
 const addressTypeRegex = {
-  testnet: {
+  TEST: {
     LEGACY: /^[mn][1-9A-HJ-NP-Za-km-z]{26,35}/,
     SEGWIT: /^[2][1-9A-HJ-NP-Za-km-z]{26,35}/,
     NATIVE_SEGWIT: /^[tb1][0-9A-HJ-NP-Za-z]{41,62}/,
   },
-  mainnet: {
+  MAIN: {
     LEGACY: /^[1][1-9A-HJ-NP-Za-km-z]{26,35}/,
     SEGWIT: /^[3][1-9A-HJ-NP-Za-km-z]{26,35}/,
     NATIVE_SEGWIT: /^[bc1][0-9A-HJ-NP-Za-z]{41,62}/,

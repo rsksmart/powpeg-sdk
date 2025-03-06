@@ -1,12 +1,11 @@
 import { Psbt } from 'bitcoinjs-lib'
 
-export type Network = 'mainnet' | 'testnet'
 export type FeeLevel = 'slow' | 'average' | 'fast'
 
 export interface BitcoinSigner {
   getNonChangeAddresses(bundleSize: number): Promise<string[]>
   getChangeAddresses(bundleSize: number): Promise<string[]>
-  signTransaction(psbt: Psbt): Promise<string>
+  signTransaction(psbt: Psbt, inputs?: Utxo[], transactions?: string[]): Promise<string>
 }
 
 export interface BitcoinDataSource {

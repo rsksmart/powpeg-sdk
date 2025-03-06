@@ -1,13 +1,13 @@
 import { bridge } from '@rsksmart/rsk-precompiled-abis'
 import { ethers } from 'ethers'
-import type { Network } from './types'
+import type { Network } from './constants'
 
 export class Bridge {
   provider: ethers.Provider
   bridgeContract: ethers.Contract
   publicNodes: Record<Network, string> = {
-    mainnet: 'https://public-node.rsk.co',
-    testnet: 'https://public-node.testnet.rsk.co',
+    MAIN: 'https://public-node.rsk.co',
+    TEST: 'https://public-node.testnet.rsk.co',
   }
 
   constructor(network: Network, rpcProviderUrl?: string) {

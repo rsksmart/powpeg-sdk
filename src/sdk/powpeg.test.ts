@@ -30,7 +30,7 @@ describe('sdk', () => {
     broadcast: vi.fn(),
   } satisfies BitcoinDataSource
 
-  const sdk = new PowPegSDK(mockedSigner, mockedDataSource, 'testnet')
+  const sdk = new PowPegSDK(mockedSigner, mockedDataSource, 'TEST')
 
   it('should create a peg-in', async () => {
     const bridgeSpy = vi.spyOn(sdk['bridge'], 'getFederationAddress')
