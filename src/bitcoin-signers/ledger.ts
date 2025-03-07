@@ -69,7 +69,6 @@ export class LedgerSigner implements BitcoinSigner {
     const addresses: string[] = []
     const basePath = `m/${this.getPathPurpose()}'/${this.getPathCoin()}'/0'/${change ? '1' : '0'}`
     const xpub = await this.connection.getWalletXpub({ path: basePath, xpubVersion: this.getXpubVersion() })
-    console.log(xpub)
     for (let i = 0; i < bundleSize; i++) {
       const path = `${basePath}/${i}`
       const address = deriveAddress(xpub, i, this.addressType, this.network)

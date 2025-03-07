@@ -20,6 +20,7 @@ export default [
       '@stylistic/spaced-comment': 'off',
       '@stylistic/quotes': ['error', 'single', { avoidEscape: true }],
       '@stylistic/arrow-parens': ['error', 'always'],
+      'no-console': ['error', { allow: ['error'] }],
     },
   },
 ]
