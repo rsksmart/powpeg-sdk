@@ -2,7 +2,7 @@ import TrezorConnect, { PROTO } from '@trezor/connect-web'
 import type { BitcoinSigner, Utxo } from '../types'
 import { Psbt } from 'bitcoinjs-lib'
 import { getAddressType } from '../utils'
-import { addressTypes, networks, type AddressType, type Network } from '../constants'
+import { supportedAddressTypes, networks, type AddressType, type Network } from '../constants'
 
 export class TrezorSigner implements BitcoinSigner {
   private bitcoinTxVersion = 1
@@ -28,7 +28,7 @@ export class TrezorSigner implements BitcoinSigner {
   }
 
   private getPathPurpose() {
-    return addressTypes[this._addressType].path
+    return supportedAddressTypes[this._addressType].path
   }
 
   private getPathCoin() {

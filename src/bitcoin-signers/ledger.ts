@@ -6,7 +6,7 @@ import { deriveAddress, sleep } from '../utils'
 import { Transaction, type Psbt } from 'bitcoinjs-lib'
 import type { Transaction as LedgerTransaction } from '@ledgerhq/hw-app-btc/lib/types'
 import type { CreateTransactionArg } from '@ledgerhq/hw-app-btc/lib/createTransaction'
-import { addressTypes, networks, type AddressType, type Network } from '../constants'
+import { supportedAddressTypes, networks, type AddressType, type Network } from '../constants'
 
 export class LedgerSigner implements BitcoinSigner {
   private addresses = new Map<string, string>()
@@ -38,7 +38,7 @@ export class LedgerSigner implements BitcoinSigner {
   }
 
   private getPathPurpose() {
-    return addressTypes[this._addressType].path
+    return supportedAddressTypes[this._addressType].path
   }
 
   private getPathCoin() {
@@ -46,7 +46,7 @@ export class LedgerSigner implements BitcoinSigner {
   }
 
   private getAddressFormat() {
-    return addressTypes[this._addressType].format
+    return supportedAddressTypes[this._addressType].format
   }
 
   private getXpubVersion() {
@@ -110,22 +110,16 @@ export class LedgerSigner implements BitcoinSigner {
   }
 
   async signTransaction(psbt: Psbt, inputs: Utxo[], transactions: string[]): Promise<string> {
-    try {
-      const ledgerInputs = this.getInputs(inputs, transactions)
-      const paths = inputs.map((input) => this.addresses.get(input.address)).filter((item): item is string => !!item)
-      const outputScriptHex = this.getOutputScriptHex(psbt)
-      return this.connection.createPaymentTransaction({
-        inputs: ledgerInputs,
-        associatedKeysets: paths,
-        outputScriptHex,
-        segwit: this.isSegwit(),
-        useTrustedInputForSegwit: this.isSegwit(),
-        additionals: this.getAddressFormat() === 'bech32' ? ['bech32'] : [],
-      })
-    }
-    catch (error) {
-      console.error(error)
-    }
-    return ''
+    const ledgerInputs = this.getInputs(inputs, transactions)
+    const paths = inputs.map((input) => this.addresses.get(input.address)).filter((item): item is string => !!item)
+    const outputScriptHex = this.getOutputScriptHex(psbt)
+    return this.connection.createPaymentTransaction({
+      inputs: ledgerInputs,
+      associatedKeysets: paths,
+      outputScriptHex,
+      segwit: this.isSegwit(),
+      useTrustedInputForSegwit: this.isSegwit(),
+      additionals: this.getAddressFormat() === 'bech32' ? ['bech32'] : [],
+    })
   }
 }

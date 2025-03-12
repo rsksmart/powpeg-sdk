@@ -38,14 +38,14 @@ export function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(() => resolve(true), ms))
 }
 
-const addressGenerators = {
+const pubkeyAddressGenerators = {
   'LEGACY': (pubkey: Buffer, network: BitcoinJsNetwork) => payments.p2pkh({ pubkey, network }),
   'SEGWIT': (pubkey: Buffer, network: BitcoinJsNetwork) => payments.p2sh({ redeem: payments.p2wpkh({ pubkey, network }), network }),
   'NATIVE SEGWIT': (pubkey: Buffer, network: BitcoinJsNetwork) => payments.p2wpkh({ pubkey, network }),
 }
 
 function getAddressFromPubKey(pubkey: Buffer, addressType: AddressType, network: BitcoinJsNetwork) {
-  const generator = addressGenerators[addressType]
+  const generator = pubkeyAddressGenerators[addressType]
   if (!generator) throw new Error(`Unsupported address type: ${addressType}`)
   return generator(pubkey, network)
 }

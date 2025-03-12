@@ -11,7 +11,7 @@ export class PowPegSDK {
   private txInputSizeInBytes = 145
   private pegInOutputs = 3
   private powpegRsktHeader = '52534b5401'
-  private burnDustMaxValue = 2000
+  private burnDustMaxValue = 30_000
   private utxos: Utxo[] = []
   private changeAddress?: string
   private minPeginAmount = 500_000n
@@ -31,6 +31,7 @@ export class PowPegSDK {
     private network: Network,
     rpcProviderUrl?: string,
     private maxBundleSize = 10,
+    private burnDustValue = 2000,
   ) {
     this.bitcoinJsNetwork = networks[network].lib
     this.bridge = new Bridge(network, rpcProviderUrl)
@@ -155,7 +156,7 @@ export class PowPegSDK {
     const amount = BigInt(psbt.txOutputs[1].value)
     const feeRate = await this.bitcoinDataSource.getFeeRate(feeLevel)
     const { inputs, change } = await this.calculateFeeAndSelectedInputs(amount, this.utxos, feeRate)
-    if (change > this.burnDustMaxValue) {
+    if (change > Math.min(this.burnDustValue, this.burnDustMaxValue)) {
       psbt.addOutput({
         address: this.changeAddress ?? inputs[0].address,
         value: change,

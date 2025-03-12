@@ -1,6 +1,6 @@
 import { networks as bitcoinJsNetworks } from 'bitcoinjs-lib'
 
-export const addressTypes = {
+export const supportedAddressTypes = {
   'NATIVE SEGWIT': {
     path: '84',
     format: 'bech32',
@@ -30,6 +30,6 @@ export const networks = {
   },
 } as const
 
-export type AddressType = keyof typeof addressTypes
+export type AddressType = keyof typeof supportedAddressTypes
 
 export type Network = keyof typeof networks
