@@ -1,5 +1,6 @@
-import { address, networks, payments, Psbt, Transaction } from 'bitcoinjs-lib'
-import type { BitcoinDataSource, BitcoinSigner, Network, Utxo, FeeLevel, AddressWithDetails } from '../types'
+import { address, payments, Psbt, Transaction } from 'bitcoinjs-lib'
+import type { BitcoinDataSource, BitcoinSigner, Utxo, FeeLevel, AddressWithDetails } from '../types'
+import { networks, type Network } from '../constants'
 import { getAddressType, remove0x } from '../utils'
 import { Bridge } from '../bridge'
 import * as sdkErrors from '../errors'
@@ -14,13 +15,13 @@ export class PowPegSDK {
   private utxos: Utxo[] = []
   private changeAddress?: string
   private minPeginAmount = 500_000n
-  private bitcoinJsNetwork: networks.Network
+  private bitcoinJsNetwork
   private bridge: Bridge
 
   /**
    * @param {BitcoinSigner} bitcoinSigner - An instance of a class that implements the BitcoinSigner interface.
    * @param {BitcoinDataSource} bitcoinDataSource - An instance of a class that implements the BitcoinDataSource interface.
-   * @param {Network} network - The network to use. Either 'mainnet' or 'testnet'.
+   * @param {Network} network - The network to use. Either 'MAIN' or 'TEST'.
    * @param {string} rpcProviderUrl - URL of either your own Rootstock node, the Rootstock RPC API or a third-party node provider. If not provided, it will default to the Rootstock public node for the specified network.
    * @param {number} maxBundleSize - The maximum number of addresses to ask for while creating a peg-in transaction. Defaults to 10.
    */
@@ -30,8 +31,9 @@ export class PowPegSDK {
     private network: Network,
     rpcProviderUrl?: string,
     private maxBundleSize = 10,
+    private burnDustValue = 2000,
   ) {
-    this.bitcoinJsNetwork = network === 'mainnet' ? networks.bitcoin : networks.testnet
+    this.bitcoinJsNetwork = networks[network].lib
     this.bridge = new Bridge(network, rpcProviderUrl)
   }
 
@@ -40,7 +42,7 @@ export class PowPegSDK {
   }
 
   private async getAddressesWithDetails(addresses: string[]) {
-    return Promise.all(addresses.map(address => this.bitcoinDataSource.getAddressDetails(address)))
+    return Promise.all(addresses.map((address) => this.bitcoinDataSource.getAddressDetails(address)))
   }
 
   private groupAddressesByUsage(addresses: AddressWithDetails[]) {
@@ -72,10 +74,8 @@ export class PowPegSDK {
   }
 
   private async initPegin() {
-    const [nonChangeAddresses, changeAddresses] = await Promise.all([
-      this.bitcoinSigner.getNonChangeAddresses(this.maxBundleSize),
-      this.bitcoinSigner.getChangeAddresses(this.maxBundleSize),
-    ])
+    const nonChangeAddresses = await this.bitcoinSigner.getNonChangeAddresses(this.maxBundleSize)
+    const changeAddresses = await this.bitcoinSigner.getChangeAddresses(this.maxBundleSize)
     const [nonChangeAddressesWithDetails, changeAddressesWithDetails] = await Promise.all([
       this.getAddressesWithDetails(nonChangeAddresses),
       this.getAddressesWithDetails(changeAddresses),
@@ -156,13 +156,13 @@ export class PowPegSDK {
     const amount = BigInt(psbt.txOutputs[1].value)
     const feeRate = await this.bitcoinDataSource.getFeeRate(feeLevel)
     const { inputs, change } = await this.calculateFeeAndSelectedInputs(amount, this.utxos, feeRate)
-    if (change > this.burnDustMaxValue) {
+    if (change > Math.min(this.burnDustValue, this.burnDustMaxValue)) {
       psbt.addOutput({
         address: this.changeAddress ?? inputs[0].address,
         value: change,
       })
     }
-    const hexTransactions = await Promise.all(inputs.map(input => this.bitcoinDataSource.getTxHex(input.txid)))
+    const hexTransactions = await Promise.all(inputs.map((input) => this.bitcoinDataSource.getTxHex(input.txid)))
     inputs.forEach((input, index) => {
       const transaction = Transaction.fromHex(hexTransactions[index])
       psbt.addInput({
@@ -174,15 +174,15 @@ export class PowPegSDK {
         },
       })
     })
-    return psbt
+    return { psbt, inputs, transactions: hexTransactions }
   }
 
-  private async signPegin(psbt: Psbt): Promise<string> {
-    return this.bitcoinSigner.signTransaction(psbt)
+  private async signPegin(psbt: Psbt, inputs?: Utxo[], transactions?: string[]): Promise<string> {
+    return this.bitcoinSigner.signTransaction(psbt, inputs, transactions)
   }
 
-  async signAndBroadcastPegin(psbt: Psbt): Promise<string> {
-    const signedTx = await this.signPegin(psbt)
+  async signAndBroadcastPegin(psbt: Psbt, inputs?: Utxo[]): Promise<string> {
+    const signedTx = await this.signPegin(psbt, inputs)
     return this.bitcoinDataSource.broadcast(signedTx)
   }
 }

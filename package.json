@@ -31,8 +31,14 @@
     "vitest": "^3.0.7"
   },
   "dependencies": {
-    "@rsksmart/rsk-precompiled-abis": "6.0.0-ARROWHEAD",
+    "@ledgerhq/hw-app-btc": "^10.6.0",
+    "@ledgerhq/hw-transport": "^6.31.4",
+    "@ledgerhq/hw-transport-webusb": "^6.29.4",
+    "@rsksmart/rsk-precompiled-abis": "7.1.0-LOVELL",
+    "@trezor/connect-web": "^9.5.1",
+    "bip32": "5.0.0-rc.0",
     "bitcoinjs-lib": "^6.1.7",
-    "ethers": "^6.13.5"
+    "ethers": "^6.13.5",
+    "tiny-secp256k1": "^2.2.3"
   }
 }

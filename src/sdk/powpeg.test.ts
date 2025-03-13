@@ -23,14 +23,14 @@ describe('sdk', () => {
   } satisfies BitcoinSigner
 
   const mockedDataSource = {
-    getAddressDetails: vi.fn().mockImplementation(address => ({ address, balance: 0, txCount: 0 })),
+    getAddressDetails: vi.fn().mockImplementation((address) => ({ address, balance: 0, txCount: 0 })),
     getFeeRate: vi.fn().mockReturnValue(1),
     getOutputs: vi.fn(),
     getTxHex: vi.fn(),
     broadcast: vi.fn(),
   } satisfies BitcoinDataSource
 
-  const sdk = new PowPegSDK(mockedSigner, mockedDataSource, 'testnet')
+  const sdk = new PowPegSDK(mockedSigner, mockedDataSource, 'TEST')
 
   it('should create a peg-in', async () => {
     const bridgeSpy = vi.spyOn(sdk['bridge'], 'getFederationAddress')

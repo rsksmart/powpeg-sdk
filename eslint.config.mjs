@@ -18,6 +18,9 @@ export default [
     rules: {
       'yml/no-empty-mapping-value': 'off',
       '@stylistic/spaced-comment': 'off',
+      '@stylistic/quotes': ['error', 'single', { avoidEscape: true }],
+      '@stylistic/arrow-parens': ['error', 'always'],
+      'no-console': ['error'],
     },
   },
 ]
