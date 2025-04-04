@@ -4,6 +4,7 @@ import { networks, type Network } from '../constants'
 import { getAddressType, remove0x } from '../utils'
 import { Bridge } from '../bridge'
 import * as sdkErrors from '../errors'
+import { ethers } from '@rsksmart/bridges-core-sdk'
 
 export class PowPegSDK {
   private txHeaderSizeInBytes = 13
@@ -15,6 +16,7 @@ export class PowPegSDK {
   private utxos: Utxo[] = []
   private changeAddress?: string
   private minPeginAmount = 500_000n
+  private minPegoutAmount = '0.004'
   private bitcoinJsNetwork
   private bridge: Bridge
 
@@ -184,5 +186,34 @@ export class PowPegSDK {
   async signAndBroadcastPegin(psbt: Psbt, inputs?: Utxo[]): Promise<string> {
     const signedTx = await this.signPegin(psbt, inputs)
     return this.bitcoinDataSource.broadcast(signedTx)
+  }
+
+  async createPegout(amount: string, senderAccount: string, provider: ethers.providers.Provider) {
+    const amountBN = ethers.utils.parseUnits(amount, 18).toBigInt()
+    const minAmountBN = ethers.utils.parseUnits(this.minPegoutAmount, 18).toBigInt()
+    if (amountBN < minAmountBN) {
+      throw new sdkErrors.AmountBelowMinError(`Minimum allowed amount is ${this.minPegoutAmount}.`)
+    }
+    const balance = await provider.getBalance(senderAccount)
+    if (balance.lt(amountBN)) {
+      throw new sdkErrors.NotEnoughFundsError(`Requested amount ${amountBN} is greater than current balance ${balance}.`)
+    }
+    const tx = {
+      from: senderAccount,
+      to: this.bridge.address,
+      value: amountBN.toString(),
+    }
+    const gas = await provider.estimateGas(tx)
+    const gasPrice = await provider.getGasPrice()
+    const rootstockFee = gas.mul(gasPrice).toBigInt()
+    const bitcoinFee = await this.bridge.getPegoutEstimatedFee()
+
+    return { tx, rootstockFee, bitcoinFee }
+  }
+
+  async signAndBroadcastPegout(tx: { from: string, to: string, value: string }, signer: ethers.Signer) {
+    const { hash } = await signer.sendTransaction(tx)
+
+    return signer.provider?.waitForTransaction(hash)
   }
 }

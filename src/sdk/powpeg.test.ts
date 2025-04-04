@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { PowPegSDK } from './powpeg'
 import type { BitcoinSigner, BitcoinDataSource } from '../types'
 import { AmountBelowMinError, NotEnoughFundsError } from '../errors'
+import { ethers } from '@rsksmart/bridges-core-sdk'
 
 const btcAddresses = [
   'mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn',
@@ -14,6 +15,25 @@ const btcAddresses = [
 const rskAddresses = [
   '0x8c2f0abf2b1c4d4f7f5b6e3c3f2a6b7f7c7c1d9d',
 ]
+
+vi.mock('@rsksmart/bridges-core-sdk', async () => {
+  const original = await vi.importActual<typeof import('@rsksmart/bridges-core-sdk')>('@rsksmart/bridges-core-sdk')
+  return {
+    ...original,
+    ethers: {
+      ...original.ethers,
+      Contract: vi.fn(() => ({
+        ...ethers.Contract.prototype,
+        getFederationAddress: vi.fn().mockResolvedValue('2MskK2P1Qw9QbeZ6MG5jmeWMX2d4MFANgkD'),
+        getEstimatedFeesForNextPegOutEvent: vi.fn().mockResolvedValue(ethers.BigNumber.from(45_500n)),
+        getQueuedPegoutsCount: vi.fn().mockResolvedValue(ethers.BigNumber.from(2n)),
+      })),
+      providers: {
+        JsonRpcProvider: vi.fn(),
+      },
+    },
+  }
+})
 
 describe('sdk', () => {
   const mockedSigner = {
@@ -62,5 +82,31 @@ describe('sdk', () => {
     const fundedPsbt = await sdk.fundPegin(psbt, 'average')
 
     expect(fundedPsbt).toBeDefined()
+  })
+  it('should fail to create a peg-out with an amount below the minimum', async () => {
+    const provider = new ethers.providers.JsonRpcProvider()
+
+    await expect(sdk.createPegout('0.001', rskAddresses[0], provider)).rejects.toThrowError(AmountBelowMinError)
+  })
+  it('should fail to create a peg-out if user has not enough funds', async () => {
+    vi.mocked(ethers.providers.JsonRpcProvider).mockImplementation(() => ({
+      ...Object.create(ethers.providers.JsonRpcProvider.prototype),
+      getBalance: vi.fn().mockResolvedValue(ethers.BigNumber.from(95_020_024_416_166n)),
+    }))
+    const provider = new ethers.providers.JsonRpcProvider()
+
+    await expect(sdk.createPegout('0.006', rskAddresses[0], provider)).rejects.toThrowError(NotEnoughFundsError)
+  })
+  it('should create a peg-out with an allowed amount and enough funds', async () => {
+    vi.mocked(ethers.providers.JsonRpcProvider).mockImplementation(() => ({
+      ...Object.create(ethers.providers.JsonRpcProvider.prototype),
+      getBalance: vi.fn().mockResolvedValue(ethers.BigNumber.from(5_695_020_024_416_166n)),
+      estimateGas: vi.fn().mockResolvedValue(ethers.BigNumber.from(50_000n)),
+      getGasPrice: vi.fn().mockResolvedValue(ethers.BigNumber.from(6_000_123n)),
+    }))
+    const provider = new ethers.providers.JsonRpcProvider()
+    const pegout = await sdk.createPegout('0.005', rskAddresses[0], provider)
+
+    expect(pegout).toBeDefined()
   })
 })
