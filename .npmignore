@@ -1,4 +1,7 @@
-src
+src/
 eslint.config.mjs
 tsconfig.json
 *.tgz
+.vscode/
+.github/
+coverage/

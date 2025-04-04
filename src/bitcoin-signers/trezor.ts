@@ -27,6 +27,10 @@ export class TrezorSigner implements BitcoinSigner {
     this._addressType = addressType
   }
 
+  get addressType() {
+    return this._addressType
+  }
+
   private getPathPurpose() {
     return supportedAddressTypes[this._addressType].path
   }
