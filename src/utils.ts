@@ -34,10 +34,6 @@ export function getAddressType(address: string, network: Network) {
   }
 }
 
-export function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(() => resolve(true), ms))
-}
-
 const pubkeyAddressGenerators = {
   'LEGACY': (pubkey: Buffer, network: BitcoinJsNetwork) => payments.p2pkh({ pubkey, network }),
   'SEGWIT': (pubkey: Buffer, network: BitcoinJsNetwork) => payments.p2sh({ redeem: payments.p2wpkh({ pubkey, network }), network }),
