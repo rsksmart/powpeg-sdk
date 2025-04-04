@@ -3,7 +3,7 @@ import { ethers } from '@rsksmart/bridges-core-sdk'
 import type { Network } from './constants'
 
 export class Bridge {
-  address = '0x0000000000000000000000000000000001000006'
+  readonly address = '0x0000000000000000000000000000000001000006'
   provider: ethers.providers.Provider
   bridgeContract: ethers.Contract
   publicNodes: Record<Network, string> = {
