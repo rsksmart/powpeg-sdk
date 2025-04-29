@@ -17,6 +17,10 @@
   },
   "keywords": [],
   "author": "",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rsksmart/powpeg-sdk.git"
+  },
   "license": "ISC",
   "devDependencies": {
     "@eslint/js": "^9.22.0",
