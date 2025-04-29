@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeAll } from 'vitest'
 import TrezorConnect from '@trezor/connect-web'
 import { TrezorSigner } from './trezor'
 import { Psbt } from 'bitcoinjs-lib'
-import type { Utxo } from '../types'
+import type { Utxo } from '../../types'
 
 vi.mock('@trezor/connect-web', () => ({
   default: {

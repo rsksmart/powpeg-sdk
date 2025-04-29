@@ -1,15 +1,15 @@
 import TrezorConnect, { PROTO } from '@trezor/connect-web'
-import type { BitcoinSigner, Utxo } from '../types'
+import type { BitcoinSigner, Utxo } from '../../types'
 import { Psbt } from 'bitcoinjs-lib'
-import { getAddressType } from '../utils'
-import { supportedAddressTypes, networks, type AddressType, type Network } from '../constants'
+import { getAddressType } from '../../utils'
+import { supportedAddressTypes, networks, type AddressType, type Network } from '../../constants'
 
 export class TrezorSigner implements BitcoinSigner {
-  private bitcoinTxVersion = 1
-  private addresses = new Map<string, number[]>()
+  private readonly bitcoinTxVersion = 1
+  private readonly addresses = new Map<string, number[]>()
 
   private constructor(
-    private network: Network = 'TEST',
+    private readonly network: Network = 'TEST',
     private _addressType: AddressType = 'NATIVE SEGWIT',
   ) {}
 

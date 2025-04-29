@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest'
 import TransportWebUSB from '@ledgerhq/hw-transport-webusb'
 import { LedgerSigner } from './ledger'
-import { networks } from '../constants'
+import { networks } from '../../constants'
 import { Psbt } from 'bitcoinjs-lib'
 
 vi.mock('@ledgerhq/hw-app-btc', async () => {
