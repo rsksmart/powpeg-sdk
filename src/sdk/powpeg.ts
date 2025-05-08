@@ -183,8 +183,8 @@ export class PowPegSDK {
     return this.bitcoinSigner.signTransaction(psbt, inputs, transactions)
   }
 
-  async signAndBroadcastPegin(psbt: Psbt, inputs?: Utxo[]): Promise<string> {
-    const signedTx = await this.signPegin(psbt, inputs)
+  async signAndBroadcastPegin(psbt: Psbt, inputs?: Utxo[], transactions?: string[]): Promise<string> {
+    const signedTx = await this.signPegin(psbt, inputs, transactions)
     return this.bitcoinDataSource.broadcast(signedTx)
   }
 
