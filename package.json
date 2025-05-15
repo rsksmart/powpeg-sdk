@@ -40,7 +40,7 @@
     "@ledgerhq/hw-transport-webusb": "^6.29.4",
     "@rsksmart/bridges-core-sdk": "^0.4.2",
     "@rsksmart/rsk-precompiled-abis": "7.1.0-LOVELL",
-    "@trezor/connect-web": "^9.5.4",
+    "@trezor/connect-web": "^9.5.5",
     "bip32": "5.0.0-rc.0",
     "bitcoinjs-lib": "^6.1.7",
     "tiny-secp256k1": "^2.2.3"
