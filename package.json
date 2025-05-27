@@ -35,7 +35,7 @@
     "vitest": "^3.0.8"
   },
   "dependencies": {
-    "@ledgerhq/hw-app-btc": "^10.9.0",
+    "@ledgerhq/hw-app-btc": "^10.9.1",
     "@ledgerhq/hw-transport": "^6.31.4",
     "@ledgerhq/hw-transport-webusb": "^6.29.4",
     "@rsksmart/bridges-core-sdk": "^0.4.2",
