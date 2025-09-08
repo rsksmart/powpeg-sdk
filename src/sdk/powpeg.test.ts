@@ -92,6 +92,8 @@ describe('sdk', () => {
     vi.mocked(ethers.providers.JsonRpcProvider).mockImplementation(() => ({
       ...Object.create(ethers.providers.JsonRpcProvider.prototype),
       getBalance: vi.fn().mockResolvedValue(ethers.BigNumber.from(95_020_024_416_166n)),
+      estimateGas: vi.fn().mockResolvedValue(ethers.BigNumber.from(50_000n)),
+      getGasPrice: vi.fn().mockResolvedValue(ethers.BigNumber.from(6_000_123n)),
     }))
     const provider = new ethers.providers.JsonRpcProvider()
 
@@ -108,5 +110,17 @@ describe('sdk', () => {
     const pegout = await sdk.createPegout('0.005', rskAddresses[0], provider)
 
     expect(pegout).toBeDefined()
+  })
+  it('should estimate peg-out fees', async () => {
+    vi.mocked(ethers.providers.JsonRpcProvider).mockImplementation(() => ({
+      ...Object.create(ethers.providers.JsonRpcProvider.prototype),
+      estimateGas: vi.fn().mockResolvedValue(ethers.BigNumber.from(50_000n)),
+      getGasPrice: vi.fn().mockResolvedValue(ethers.BigNumber.from(6_000_123n)),
+    }))
+    const provider = new ethers.providers.JsonRpcProvider()
+    const fees = await sdk.estimatePegoutFees('0.005', provider, rskAddresses[0])
+
+    expect(fees.bitcoinFee).toBe(15_166n)
+    expect(fees.rootstockFee).toBe(300_006_150_000n)
   })
 })

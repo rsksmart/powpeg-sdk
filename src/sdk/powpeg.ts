@@ -1,5 +1,5 @@
 import { address, payments, Psbt, Transaction } from 'bitcoinjs-lib'
-import type { BitcoinDataSource, BitcoinSigner, Utxo, FeeLevel, AddressWithDetails } from '../types'
+import type { BitcoinDataSource, BitcoinSigner, Utxo, FeeLevel, AddressWithDetails, PegoutFeeEstimation } from '../types'
 import { networks, type Network } from '../constants'
 import { getAddressType, remove0x } from '../utils'
 import { Bridge } from '../bridge'
@@ -188,27 +188,54 @@ export class PowPegSDK {
     return this.bitcoinDataSource.broadcast(signedTx)
   }
 
-  async createPegout(amount: string, senderAccount: string, provider: ethers.providers.Provider) {
+  private validatePegoutAmount(amount: string): void {
     const amountBN = ethers.utils.parseUnits(amount, 18).toBigInt()
     const minAmountBN = ethers.utils.parseUnits(this.minPegoutAmount, 18).toBigInt()
     if (amountBN < minAmountBN) {
       throw new sdkErrors.AmountBelowMinError(`Minimum allowed amount is ${this.minPegoutAmount}.`)
     }
+  }
+
+  private createPegoutTransaction(amount: string, fromAddress: string) {
+    const amountBN = ethers.utils.parseUnits(amount, 18).toBigInt()
+
+    return {
+      from: fromAddress,
+      to: this.bridge.address,
+      value: amountBN.toString(),
+    }
+  }
+
+  async estimatePegoutFees(amount: string, provider: ethers.providers.Provider, fromAddress: string = ethers.constants.AddressZero): Promise<PegoutFeeEstimation> {
+    this.validatePegoutAmount(amount)
+    const tx = this.createPegoutTransaction(amount, fromAddress)
+    const [gas, gasPrice, bitcoinFee] = await Promise.all([
+      provider.estimateGas(tx),
+      provider.getGasPrice(),
+      this.bridge.getPegoutEstimatedFee(),
+    ])
+    const rootstockFee = gas.mul(gasPrice).toBigInt()
+
+    return {
+      bitcoinFee,
+      rootstockFee,
+    }
+  }
+
+  async createPegout(amount: string, senderAccount: string, provider: ethers.providers.Provider) {
+    const fees = await this.estimatePegoutFees(amount, provider, senderAccount)
+    const amountBN = ethers.utils.parseUnits(amount, 18).toBigInt()
     const balance = await provider.getBalance(senderAccount)
     if (balance.lt(amountBN)) {
       throw new sdkErrors.NotEnoughFundsError(`Requested amount ${amountBN} is greater than current balance ${balance}.`)
     }
-    const tx = {
-      from: senderAccount,
-      to: this.bridge.address,
-      value: amountBN.toString(),
-    }
-    const gas = await provider.estimateGas(tx)
-    const gasPrice = await provider.getGasPrice()
-    const rootstockFee = gas.mul(gasPrice).toBigInt()
-    const bitcoinFee = await this.bridge.getPegoutEstimatedFee()
+    const tx = this.createPegoutTransaction(amount, senderAccount)
 
-    return { tx, rootstockFee, bitcoinFee }
+    return {
+      tx,
+      rootstockFee: fees.rootstockFee,
+      bitcoinFee: fees.bitcoinFee,
+    }
   }
 
   async signAndBroadcastPegout(tx: { from: string, to: string, value: string }, signer: ethers.Signer) {
