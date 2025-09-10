@@ -4,7 +4,7 @@ import { networks, type Network } from '../constants'
 import { getAddressType, remove0x } from '../utils'
 import { Bridge } from '../bridge'
 import * as sdkErrors from '../errors'
-import { ethers } from '@rsksmart/bridges-core-sdk'
+import { assertTruthy, ethers } from '@rsksmart/bridges-core-sdk'
 
 export class PowPegSDK {
   private txHeaderSizeInBytes = 13
@@ -33,8 +33,8 @@ export class PowPegSDK {
    * @param {number} maxBundleSize - The maximum number of addresses to ask for while creating a peg-in transaction. Defaults to 10.
    */
   constructor(
-    private bitcoinSigner: BitcoinSigner,
-    private bitcoinDataSource: BitcoinDataSource,
+    private _bitcoinSigner: BitcoinSigner | null,
+    private _bitcoinDataSource: BitcoinDataSource | null,
     private network: Network,
     rpcProviderUrl?: string,
     private maxBundleSize = 10,
@@ -43,6 +43,16 @@ export class PowPegSDK {
     this.bitcoinJsNetwork = networks[network].lib
     this.rskProvider = new ethers.providers.JsonRpcProvider(rpcProviderUrl ?? this.publicNodes[network])
     this.bridge = new Bridge(this.rskProvider)
+  }
+
+  private get bitcoinSigner() {
+    assertTruthy(this._bitcoinSigner, 'Bitcoin signer is required')
+    return this._bitcoinSigner
+  }
+
+  private get bitcoinDataSource() {
+    assertTruthy(this._bitcoinDataSource, 'Bitcoin data source is required')
+    return this._bitcoinDataSource
   }
 
   private async getUtxos(addresses: AddressWithDetails[]) {
