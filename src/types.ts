@@ -28,3 +28,8 @@ export interface Utxo {
   amount: bigint
   vout: number
 }
+
+export interface PegoutFeeEstimation {
+  bitcoinFee: bigint
+  rootstockFee: bigint
+}

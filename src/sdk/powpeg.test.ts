@@ -16,6 +16,27 @@ const rskAddresses = [
   '0x8c2f0abf2b1c4d4f7f5b6e3c3f2a6b7f7c7c1d9d',
 ]
 
+const mockValues = {
+  federationAddress: '2MskK2P1Qw9QbeZ6MG5jmeWMX2d4MFANgkD',
+  estimatedFeeForNextPegOut: ethers.BigNumber.from(45_500n),
+  queuedPegoutsCount: ethers.BigNumber.from(2n),
+  highBalance: ethers.BigNumber.from(1_000_000_000_000_000_000n),
+  mediumBalance: ethers.BigNumber.from(100_000_000_000_000n),
+  lowBalance: ethers.BigNumber.from(95_020_024_416_166n),
+  estimatedGas: ethers.BigNumber.from(50_000n),
+  gasPrice: ethers.BigNumber.from(6_000_123n),
+  bitcoinFeeRate: 1,
+}
+
+const createMockProvider = (balance = mockValues.highBalance) => ({
+  ...Object.create(ethers.providers.JsonRpcProvider.prototype),
+  getBalance: vi.fn().mockResolvedValue(balance),
+  estimateGas: vi.fn().mockResolvedValue(mockValues.estimatedGas),
+  getGasPrice: vi.fn().mockResolvedValue(mockValues.gasPrice),
+})
+
+const mockProvider = createMockProvider()
+
 vi.mock('@rsksmart/bridges-core-sdk', async () => {
   const original = await vi.importActual<typeof import('@rsksmart/bridges-core-sdk')>('@rsksmart/bridges-core-sdk')
   return {
@@ -24,12 +45,12 @@ vi.mock('@rsksmart/bridges-core-sdk', async () => {
       ...original.ethers,
       Contract: vi.fn(() => ({
         ...ethers.Contract.prototype,
-        getFederationAddress: vi.fn().mockResolvedValue('2MskK2P1Qw9QbeZ6MG5jmeWMX2d4MFANgkD'),
-        getEstimatedFeesForNextPegOutEvent: vi.fn().mockResolvedValue(ethers.BigNumber.from(45_500n)),
-        getQueuedPegoutsCount: vi.fn().mockResolvedValue(ethers.BigNumber.from(2n)),
+        getFederationAddress: vi.fn().mockResolvedValue(mockValues.federationAddress),
+        getEstimatedFeesForNextPegOutEvent: vi.fn().mockResolvedValue(mockValues.estimatedFeeForNextPegOut),
+        getQueuedPegoutsCount: vi.fn().mockResolvedValue(mockValues.queuedPegoutsCount),
       })),
       providers: {
-        JsonRpcProvider: vi.fn(),
+        JsonRpcProvider: vi.fn().mockImplementation(() => mockProvider),
       },
     },
   }
@@ -44,7 +65,7 @@ describe('sdk', () => {
 
   const mockedDataSource = {
     getAddressDetails: vi.fn().mockImplementation((address) => ({ address, balance: 0, txCount: 0 })),
-    getFeeRate: vi.fn().mockReturnValue(1),
+    getFeeRate: vi.fn().mockReturnValue(mockValues.bitcoinFeeRate),
     getOutputs: vi.fn(),
     getTxHex: vi.fn(),
     broadcast: vi.fn(),
@@ -84,29 +105,22 @@ describe('sdk', () => {
     expect(fundedPsbt).toBeDefined()
   })
   it('should fail to create a peg-out with an amount below the minimum', async () => {
-    const provider = new ethers.providers.JsonRpcProvider()
-
-    await expect(sdk.createPegout('0.001', rskAddresses[0], provider)).rejects.toThrowError(AmountBelowMinError)
+    await expect(sdk.createPegout('0.001', rskAddresses[0])).rejects.toThrowError(AmountBelowMinError)
   })
   it('should fail to create a peg-out if user has not enough funds', async () => {
-    vi.mocked(ethers.providers.JsonRpcProvider).mockImplementation(() => ({
-      ...Object.create(ethers.providers.JsonRpcProvider.prototype),
-      getBalance: vi.fn().mockResolvedValue(ethers.BigNumber.from(95_020_024_416_166n)),
-    }))
-    const provider = new ethers.providers.JsonRpcProvider()
+    mockProvider.getBalance.mockResolvedValueOnce(mockValues.lowBalance)
 
-    await expect(sdk.createPegout('0.006', rskAddresses[0], provider)).rejects.toThrowError(NotEnoughFundsError)
+    await expect(sdk.createPegout('0.006', rskAddresses[0])).rejects.toThrowError(NotEnoughFundsError)
   })
   it('should create a peg-out with an allowed amount and enough funds', async () => {
-    vi.mocked(ethers.providers.JsonRpcProvider).mockImplementation(() => ({
-      ...Object.create(ethers.providers.JsonRpcProvider.prototype),
-      getBalance: vi.fn().mockResolvedValue(ethers.BigNumber.from(5_695_020_024_416_166n)),
-      estimateGas: vi.fn().mockResolvedValue(ethers.BigNumber.from(50_000n)),
-      getGasPrice: vi.fn().mockResolvedValue(ethers.BigNumber.from(6_000_123n)),
-    }))
-    const provider = new ethers.providers.JsonRpcProvider()
-    const pegout = await sdk.createPegout('0.005', rskAddresses[0], provider)
+    const pegout = await sdk.createPegout('0.005', rskAddresses[0])
 
     expect(pegout).toBeDefined()
+  })
+  it('should estimate peg-out fees', async () => {
+    const fees = await sdk.estimatePegoutFees('0.005', rskAddresses[0])
+
+    expect(fees.bitcoinFee).toBe(15_166n)
+    expect(fees.rootstockFee).toBe(300_006_150_000n)
   })
 })
