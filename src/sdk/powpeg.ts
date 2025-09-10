@@ -19,6 +19,11 @@ export class PowPegSDK {
   private minPegoutAmount = '0.004'
   private bitcoinJsNetwork
   private bridge: Bridge
+  private rskProvider: ethers.providers.Provider
+  private publicNodes: Record<Network, string> = {
+    MAIN: 'https://public-node.rsk.co',
+    TEST: 'https://public-node.testnet.rsk.co',
+  }
 
   /**
    * @param {BitcoinSigner} bitcoinSigner - An instance of a class that implements the BitcoinSigner interface.
@@ -36,7 +41,8 @@ export class PowPegSDK {
     private burnDustValue = 2000,
   ) {
     this.bitcoinJsNetwork = networks[network].lib
-    this.bridge = new Bridge(network, rpcProviderUrl)
+    this.rskProvider = new ethers.providers.JsonRpcProvider(rpcProviderUrl ?? this.publicNodes[network])
+    this.bridge = new Bridge(this.rskProvider)
   }
 
   private async getUtxos(addresses: AddressWithDetails[]) {
@@ -188,7 +194,7 @@ export class PowPegSDK {
     return this.bitcoinDataSource.broadcast(signedTx)
   }
 
-  private validatePegoutAmount(amount: string): void {
+  private validateMinimumPegoutAmount(amount: string): void {
     const amountBN = ethers.utils.parseUnits(amount, 18).toBigInt()
     const minAmountBN = ethers.utils.parseUnits(this.minPegoutAmount, 18).toBigInt()
     if (amountBN < minAmountBN) {
@@ -206,12 +212,12 @@ export class PowPegSDK {
     }
   }
 
-  async estimatePegoutFees(amount: string, provider: ethers.providers.Provider, fromAddress: string = ethers.constants.AddressZero): Promise<PegoutFeeEstimation> {
-    this.validatePegoutAmount(amount)
+  async estimatePegoutFees(amount: string, fromAddress: string = ethers.constants.AddressZero): Promise<PegoutFeeEstimation> {
+    this.validateMinimumPegoutAmount(amount)
     const tx = this.createPegoutTransaction(amount, fromAddress)
     const [gas, gasPrice, bitcoinFee] = await Promise.all([
-      provider.estimateGas(tx),
-      provider.getGasPrice(),
+      this.rskProvider.estimateGas(tx),
+      this.rskProvider.getGasPrice(),
       this.bridge.getPegoutEstimatedFee(),
     ])
     const rootstockFee = gas.mul(gasPrice).toBigInt()
@@ -222,10 +228,10 @@ export class PowPegSDK {
     }
   }
 
-  async createPegout(amount: string, senderAccount: string, provider: ethers.providers.Provider) {
-    const fees = await this.estimatePegoutFees(amount, provider, senderAccount)
+  async createPegout(amount: string, senderAccount: string) {
+    const fees = await this.estimatePegoutFees(amount, senderAccount)
     const amountBN = ethers.utils.parseUnits(amount, 18).toBigInt()
-    const balance = await provider.getBalance(senderAccount)
+    const balance = await this.rskProvider.getBalance(senderAccount)
     if (balance.lt(amountBN)) {
       throw new sdkErrors.NotEnoughFundsError(`Requested amount ${amountBN} is greater than current balance ${balance}.`)
     }
