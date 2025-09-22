@@ -3,7 +3,7 @@ import { PowPegSDK } from './powpeg'
 import type { BitcoinSigner, BitcoinDataSource } from '../types'
 import { AmountBelowMinError, NotEnoughFundsError } from '../errors'
 import { ethers } from '@rsksmart/bridges-core-sdk'
-import { TxType, PegoutStatuses, PeginStatuses } from '../api'
+import { TxType, PegoutStatuses, PeginStatuses } from '../types'
 
 const btcAddresses = [
   'mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn',
@@ -106,7 +106,7 @@ describe('sdk', () => {
     broadcast: vi.fn(),
   } satisfies BitcoinDataSource
 
-  const sdk = new PowPegSDK(mockedSigner, mockedDataSource, 'TEST', 'https://api.example.com')
+  const sdk = new PowPegSDK(mockedSigner, mockedDataSource, 'TEST')
 
   it('should create a peg-in', async () => {
     const bridgeSpy = vi.spyOn(sdk['bridge'], 'getFederationAddress')
