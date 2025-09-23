@@ -114,6 +114,6 @@ export interface PeginStatusData {
 }
 
 export interface TxStatusResponse {
-  result: PegoutStatusData | PeginStatusData
+  result: PegoutStatusData | PeginStatusData | null
   error: Error | null
 }

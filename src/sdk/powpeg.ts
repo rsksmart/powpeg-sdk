@@ -27,11 +27,6 @@ export class PowPegSDK {
     TEST: 'https://public-node.testnet.rsk.co',
   }
 
-  private apiUrls: Record<Network, string> = {
-    MAIN: 'https://api.2wp.rootstock.io',
-    TEST: 'https://api.2wp.testnet.rootstock.io',
-  }
-
   /**
    * @param {BitcoinSigner} bitcoinSigner - An instance of a class that implements the BitcoinSigner interface.
    * @param {BitcoinDataSource} bitcoinDataSource - An instance of a class that implements the BitcoinDataSource interface.
@@ -44,13 +39,14 @@ export class PowPegSDK {
     private _bitcoinDataSource: BitcoinDataSource | null,
     private network: Network,
     rpcProviderUrl?: string,
+    _apiUrl?: string,
     private maxBundleSize = 10,
     private burnDustValue = 2000,
   ) {
     this.bitcoinJsNetwork = networks[network].lib
     this.rskProvider = new ethers.providers.JsonRpcProvider(rpcProviderUrl ?? this.publicNodes[network])
     this.bridge = new Bridge(this.rskProvider)
-    this.api = new ApiService(this.apiUrls[network])
+    this.api = new ApiService(network, _apiUrl)
   }
 
   private get bitcoinSigner() {
