@@ -42,35 +42,15 @@ const mockApiService = {
   getTransactionStatus: vi.fn(),
 }
 
-vi.mock('../api', () => ({
-  ApiService: vi.fn().mockImplementation(() => mockApiService),
-  TxType: {
-    PEGIN: 'PEGIN',
-    PEGOUT: 'PEGOUT',
-  },
-  PegoutStatuses: {
-    RECEIVED: 'RECEIVED',
-    REJECTED: 'REJECTED',
-    WAITING_FOR_CONFIRMATION: 'WAITING_FOR_CONFIRMATION',
-    WAITING_FOR_SIGNATURE: 'WAITING_FOR_SIGNATURE',
-    SIGNED: 'SIGNED',
-    NOT_FOUND: 'NOT_FOUND',
-    PENDING: 'PENDING',
-    NOT_PEGOUT_TX: 'NOT_PEGOUT_TX',
-    RELEASE_BTC: 'RELEASE_BTC',
-  },
-  PeginStatuses: {
-    NOT_IN_BTC_YET: 'NOT_IN_BTC_YET',
-    WAITING_CONFIRMATIONS: 'WAITING_CONFIRMATIONS',
-    NOT_IN_RSK_YET: 'NOT_IN_RSK_YET',
-    CONFIRMED: 'CONFIRMED',
-    REJECTED_NO_REFUND: 'REJECTED_NO_REFUND',
-    REJECTED_REFUND: 'REJECTED_REFUND',
-    ERROR_NOT_A_PEGIN: 'ERROR_NOT_A_PEGIN',
-    ERROR_BELOW_MIN: 'ERROR_BELOW_MIN',
-    ERROR_UNEXPECTED: 'ERROR_UNEXPECTED',
-  },
-}))
+vi.mock('../api', async () => {
+  const { TxType, PegoutStatuses, PeginStatuses } = await import('../types')
+  return {
+    ApiService: vi.fn().mockImplementation(() => mockApiService),
+    TxType,
+    PegoutStatuses,
+    PeginStatuses,
+  }
+})
 
 vi.mock('@rsksmart/bridges-core-sdk', async () => {
   const original = await vi.importActual<typeof import('@rsksmart/bridges-core-sdk')>('@rsksmart/bridges-core-sdk')
