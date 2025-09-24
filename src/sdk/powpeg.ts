@@ -28,25 +28,27 @@ export class PowPegSDK {
   }
 
   /**
-   * @param {BitcoinSigner} bitcoinSigner - An instance of a class that implements the BitcoinSigner interface.
-   * @param {BitcoinDataSource} bitcoinDataSource - An instance of a class that implements the BitcoinDataSource interface.
+   * @param {BitcoinSigner | null} _bitcoinSigner - An instance of a class that implements the BitcoinSigner interface.
+   * @param {BitcoinDataSource | null} _bitcoinDataSource - An instance of a class that implements the BitcoinDataSource interface or null if you won't use peg-in operations.
    * @param {Network} network - The network to use. Either 'MAIN' or 'TEST'.
    * @param {string} rpcProviderUrl - URL of either your own Rootstock node, the Rootstock RPC API or a third-party node provider. If not provided, it will default to the Rootstock public node for the specified network.
+   * @param {string} apiUrl - The URL of the API to use. If not provided, it will default to the production 2WP API URL for the specified network and use it as BitcoinDataSource.
    * @param {number} maxBundleSize - The maximum number of addresses to ask for while creating a peg-in transaction. Defaults to 10.
+   * @param {number} burnDustValue - The value in satoshis to consider as dust to burn. Defaults to 2000.
    */
   constructor(
     private _bitcoinSigner: BitcoinSigner | null,
     private _bitcoinDataSource: BitcoinDataSource | null,
     private network: Network,
     rpcProviderUrl?: string,
-    _apiUrl?: string,
+    apiUrl?: string,
     private maxBundleSize = 10,
     private burnDustValue = 2000,
   ) {
     this.bitcoinJsNetwork = networks[network].lib
     this.rskProvider = new ethers.providers.JsonRpcProvider(rpcProviderUrl ?? this.publicNodes[network])
     this.bridge = new Bridge(this.rskProvider)
-    this.api = new ApiService(network, _apiUrl)
+    this.api = new ApiService(network, apiUrl)
   }
 
   private get bitcoinSigner() {
@@ -55,8 +57,7 @@ export class PowPegSDK {
   }
 
   private get bitcoinDataSource() {
-    assertTruthy(this._bitcoinDataSource, 'Bitcoin data source is required')
-    return this._bitcoinDataSource
+    return this._bitcoinDataSource ?? this.api
   }
 
   private async getUtxos(addresses: AddressWithDetails[]) {

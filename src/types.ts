@@ -104,16 +104,13 @@ export interface PegoutTxDetails {
 }
 
 export interface PegoutStatusData {
+  type: TxType.PEGOUT
   txDetails: PegoutTxDetails
-  type: TxType
 }
 
 export interface PeginStatusData {
+  type: TxType.PEGIN
   txDetails: PeginTxDetails
-  type: TxType
 }
 
-export interface TxStatusResponse {
-  result: PegoutStatusData | PeginStatusData | null
-  error: Error | null
-}
+export type StatusData = PegoutStatusData | PeginStatusData
