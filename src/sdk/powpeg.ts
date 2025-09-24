@@ -17,6 +17,7 @@ export class PowPegSDK {
   private utxos: Utxo[] = []
   private changeAddress?: string
   private minPeginAmount = 500_000n
+  private peginFeeEstimationInputs = 2
   private minPegoutAmount = '0.004'
   private bitcoinJsNetwork
   private bridge: Bridge
@@ -128,6 +129,13 @@ export class PowPegSDK {
     return Buffer.from(output, 'hex')
   }
 
+  async estimatePeginFee(amount: bigint, feeLevel: FeeLevel = 'average') {
+    const feeRate = await this.bitcoinDataSource.getFeeRate(feeLevel)
+    const { baseFee, feePerInput } = await this.calculatePeginFee(amount, feeRate)
+    const totalFee = baseFee + feePerInput * this.peginFeeEstimationInputs
+    return totalFee
+  }
+
   async createPegin(amount: bigint, recipientAddress: string) {
     const { addressesWithBalance, refundAddress, changeAddress } = await this.initPegin()
     const psbt = new Psbt({ network: this.bitcoinJsNetwork })
@@ -161,13 +169,22 @@ export class PowPegSDK {
     return { inputs, rest: Number(remainingSatoshisToBePaid) }
   }
 
-  private async calculateFeeAndSelectedInputs(amount: bigint, utxos: Utxo[], feeRate: number) {
+  private validatePeginAmount(amount: bigint) {
     if (amount < this.minPeginAmount) {
       throw new sdkErrors.AmountBelowMinError(`Minimum allowed amount is ${this.minPeginAmount} satoshis.`)
     }
+  }
+
+  private async calculatePeginFee(amount: bigint, feeRate: number) {
+    this.validatePeginAmount(amount)
     const txSize = this.txHeaderSizeInBytes + this.txOutputSizeInBytes * this.pegInOutputs
     const baseFee = feeRate * txSize
     const feePerInput = feeRate * this.txInputSizeInBytes
+    return { baseFee, feePerInput }
+  }
+
+  private async calculateFeeAndSelectedInputs(amount: bigint, utxos: Utxo[], feeRate: number) {
+    const { baseFee, feePerInput } = await this.calculatePeginFee(amount, feeRate)
     const { inputs, rest } = this.selectInputs(amount, utxos, baseFee, feePerInput)
     if (rest > 0) {
       throw new sdkErrors.NotEnoughFundsError(`${rest} satoshis needed to cover the requested amount.`)
