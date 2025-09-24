@@ -1,8 +1,8 @@
 import axios, { type AxiosInstance } from 'axios'
-import { TxType } from './types'
-import type { BitcoinDataSource, FeeLevel, Utxo, AddressWithDetails, StatusData } from './types'
-import { type Network } from './constants'
-import { APIError } from './errors'
+import { TxType } from '../types'
+import type { BitcoinDataSource, FeeLevel, Utxo, AddressWithDetails, StatusData } from '../types'
+import { type Network } from '../constants'
+import { APIError } from '../errors'
 
 export class ApiService implements BitcoinDataSource {
   private apiUrls: Record<Network, string> = {
@@ -63,7 +63,7 @@ export class ApiService implements BitcoinDataSource {
     return response.data
   }
 
-  async getTransactionStatus(txHash: string, txType: TxType): Promise<StatusData> {
+  async getTransactionStatus<T extends TxType>(txHash: string, txType: T): Promise<Extract<StatusData, { type: T }>> {
     const response = await this.api.get(`/tx-status-by-type/${txHash}/${txType}`).catch(this.handleError)
     return response.data
   }

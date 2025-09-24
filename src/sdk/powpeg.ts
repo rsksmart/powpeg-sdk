@@ -3,7 +3,7 @@ import type { BitcoinDataSource, BitcoinSigner, Utxo, FeeLevel, AddressWithDetai
 import { networks, type Network } from '../constants'
 import { getAddressType, remove0x } from '../utils'
 import { Bridge } from '../bridge'
-import { ApiService } from '../api'
+import { ApiService } from '../api/api'
 import * as sdkErrors from '../errors'
 import { assertTruthy, ethers } from '@rsksmart/bridges-core-sdk'
 
@@ -282,7 +282,7 @@ export class PowPegSDK {
     return signer.provider?.waitForTransaction(hash)
   }
 
-  async getTransactionStatus(txHash: string, txType: TxType) {
+  async getTransactionStatus<T extends TxType>(txHash: string, txType: T) {
     return this.api.getTransactionStatus(txHash, txType)
   }
 }
