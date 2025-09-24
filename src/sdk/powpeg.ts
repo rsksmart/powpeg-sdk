@@ -1,8 +1,9 @@
 import { address, payments, Psbt, Transaction } from 'bitcoinjs-lib'
-import type { BitcoinDataSource, BitcoinSigner, Utxo, FeeLevel, AddressWithDetails, PegoutFeeEstimation } from '../types'
+import type { BitcoinDataSource, BitcoinSigner, Utxo, FeeLevel, AddressWithDetails, PegoutFeeEstimation, TxType } from '../types'
 import { networks, type Network } from '../constants'
 import { getAddressType, remove0x } from '../utils'
 import { Bridge } from '../bridge'
+import { ApiService } from '../api'
 import * as sdkErrors from '../errors'
 import { assertTruthy, ethers } from '@rsksmart/bridges-core-sdk'
 
@@ -19,6 +20,7 @@ export class PowPegSDK {
   private minPegoutAmount = '0.004'
   private bitcoinJsNetwork
   private bridge: Bridge
+  private api: ApiService
   private rskProvider: ethers.providers.Provider
   private publicNodes: Record<Network, string> = {
     MAIN: 'https://public-node.rsk.co',
@@ -37,12 +39,14 @@ export class PowPegSDK {
     private _bitcoinDataSource: BitcoinDataSource | null,
     private network: Network,
     rpcProviderUrl?: string,
+    _apiUrl?: string,
     private maxBundleSize = 10,
     private burnDustValue = 2000,
   ) {
     this.bitcoinJsNetwork = networks[network].lib
     this.rskProvider = new ethers.providers.JsonRpcProvider(rpcProviderUrl ?? this.publicNodes[network])
     this.bridge = new Bridge(this.rskProvider)
+    this.api = new ApiService(network, _apiUrl)
   }
 
   private get bitcoinSigner() {
@@ -258,5 +262,9 @@ export class PowPegSDK {
     const { hash } = await signer.sendTransaction(tx)
 
     return signer.provider?.waitForTransaction(hash)
+  }
+
+  async getTransactionStatus(txHash: string, txType: TxType) {
+    return this.api.getTransactionStatus(txHash, txType)
   }
 }
