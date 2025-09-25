@@ -57,6 +57,10 @@ export class PowPegSDK {
     return this._bitcoinSigner
   }
 
+  private set bitcoinSigner(signer: BitcoinSigner) {
+    this._bitcoinSigner = signer
+  }
+
   private get bitcoinDataSource() {
     return this._bitcoinDataSource ?? this.api
   }
@@ -129,7 +133,7 @@ export class PowPegSDK {
     return Buffer.from(output, 'hex')
   }
 
-  async estimatePeginFee(amount: bigint, feeLevel: FeeLevel = 'average') {
+  async estimatePeginFee(amount: bigint, feeLevel: FeeLevel = 'fast') {
     const feeRate = await this.bitcoinDataSource.getFeeRate(feeLevel)
     const { baseFee, feePerInput } = await this.calculatePeginFee(amount, feeRate)
     const totalFee = baseFee + feePerInput * this.peginFeeEstimationInputs
@@ -192,7 +196,7 @@ export class PowPegSDK {
     return { inputs, change: Math.abs(rest) }
   }
 
-  async fundPegin(psbt: Psbt, feeLevel: FeeLevel) {
+  async fundPegin(psbt: Psbt, feeLevel: FeeLevel = 'fast') {
     const amount = BigInt(psbt.txOutputs[1].value)
     const feeRate = await this.bitcoinDataSource.getFeeRate(feeLevel)
     const { inputs, change } = await this.calculateFeeAndSelectedInputs(amount, this.utxos, feeRate)
@@ -215,6 +219,13 @@ export class PowPegSDK {
       })
     })
     return { psbt, inputs, transactions: hexTransactions }
+  }
+
+  async createAndFundPegin(amount: bigint, recipientAddress: string, signer: BitcoinSigner, feeLevel: FeeLevel = 'fast') {
+    this.bitcoinSigner = signer
+    this.validatePeginAmount(amount)
+    const psbt = await this.createPegin(amount, recipientAddress)
+    return this.fundPegin(psbt, feeLevel)
   }
 
   private async signPegin(psbt: Psbt, inputs?: Utxo[], transactions?: string[]): Promise<string> {
