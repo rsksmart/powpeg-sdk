@@ -3,7 +3,7 @@ import type { BitcoinDataSource, BitcoinSigner, Utxo, FeeLevel, AddressWithDetai
 import { networks, type Network } from '../constants'
 import { getAddressType, remove0x } from '../utils'
 import { Bridge } from '../bridge'
-import { ApiService } from '../api'
+import { ApiService } from '../api/api'
 import * as sdkErrors from '../errors'
 import { assertTruthy, ethers } from '@rsksmart/bridges-core-sdk'
 
@@ -17,6 +17,7 @@ export class PowPegSDK {
   private utxos: Utxo[] = []
   private changeAddress?: string
   private minPeginAmount = 500_000n
+  private peginFeeEstimationInputs = 2
   private minPegoutAmount = '0.004'
   private bitcoinJsNetwork
   private bridge: Bridge
@@ -28,25 +29,27 @@ export class PowPegSDK {
   }
 
   /**
-   * @param {BitcoinSigner} bitcoinSigner - An instance of a class that implements the BitcoinSigner interface.
-   * @param {BitcoinDataSource} bitcoinDataSource - An instance of a class that implements the BitcoinDataSource interface.
+   * @param {BitcoinSigner | null} _bitcoinSigner - An instance of a class that implements the BitcoinSigner interface.
+   * @param {BitcoinDataSource | null} _bitcoinDataSource - An instance of a class that implements the BitcoinDataSource interface or null if you won't use peg-in operations.
    * @param {Network} network - The network to use. Either 'MAIN' or 'TEST'.
    * @param {string} rpcProviderUrl - URL of either your own Rootstock node, the Rootstock RPC API or a third-party node provider. If not provided, it will default to the Rootstock public node for the specified network.
+   * @param {string} apiUrl - The URL of the API to use. If not provided, it will default to the production 2WP API URL for the specified network and use it as BitcoinDataSource.
    * @param {number} maxBundleSize - The maximum number of addresses to ask for while creating a peg-in transaction. Defaults to 10.
+   * @param {number} burnDustValue - The value in satoshis to consider as dust to burn. Defaults to 2000.
    */
   constructor(
     private _bitcoinSigner: BitcoinSigner | null,
     private _bitcoinDataSource: BitcoinDataSource | null,
     private network: Network,
     rpcProviderUrl?: string,
-    _apiUrl?: string,
+    apiUrl?: string,
     private maxBundleSize = 10,
     private burnDustValue = 2000,
   ) {
     this.bitcoinJsNetwork = networks[network].lib
     this.rskProvider = new ethers.providers.JsonRpcProvider(rpcProviderUrl ?? this.publicNodes[network])
     this.bridge = new Bridge(this.rskProvider)
-    this.api = new ApiService(network, _apiUrl)
+    this.api = new ApiService(network, apiUrl)
   }
 
   private get bitcoinSigner() {
@@ -54,9 +57,12 @@ export class PowPegSDK {
     return this._bitcoinSigner
   }
 
+  private set bitcoinSigner(signer: BitcoinSigner) {
+    this._bitcoinSigner = signer
+  }
+
   private get bitcoinDataSource() {
-    assertTruthy(this._bitcoinDataSource, 'Bitcoin data source is required')
-    return this._bitcoinDataSource
+    return this._bitcoinDataSource ?? this.api
   }
 
   private async getUtxos(addresses: AddressWithDetails[]) {
@@ -127,6 +133,13 @@ export class PowPegSDK {
     return Buffer.from(output, 'hex')
   }
 
+  async estimatePeginFee(amount: bigint, feeLevel: FeeLevel = 'fast') {
+    const feeRate = await this.bitcoinDataSource.getFeeRate(feeLevel)
+    const { baseFee, feePerInput } = await this.calculatePeginFee(amount, feeRate)
+    const totalFee = baseFee + feePerInput * this.peginFeeEstimationInputs
+    return totalFee
+  }
+
   async createPegin(amount: bigint, recipientAddress: string) {
     const { addressesWithBalance, refundAddress, changeAddress } = await this.initPegin()
     const psbt = new Psbt({ network: this.bitcoinJsNetwork })
@@ -160,13 +173,22 @@ export class PowPegSDK {
     return { inputs, rest: Number(remainingSatoshisToBePaid) }
   }
 
-  private async calculateFeeAndSelectedInputs(amount: bigint, utxos: Utxo[], feeRate: number) {
+  private validatePeginAmount(amount: bigint) {
     if (amount < this.minPeginAmount) {
       throw new sdkErrors.AmountBelowMinError(`Minimum allowed amount is ${this.minPeginAmount} satoshis.`)
     }
+  }
+
+  private async calculatePeginFee(amount: bigint, feeRate: number) {
+    this.validatePeginAmount(amount)
     const txSize = this.txHeaderSizeInBytes + this.txOutputSizeInBytes * this.pegInOutputs
     const baseFee = feeRate * txSize
     const feePerInput = feeRate * this.txInputSizeInBytes
+    return { baseFee, feePerInput }
+  }
+
+  private async calculateFeeAndSelectedInputs(amount: bigint, utxos: Utxo[], feeRate: number) {
+    const { baseFee, feePerInput } = await this.calculatePeginFee(amount, feeRate)
     const { inputs, rest } = this.selectInputs(amount, utxos, baseFee, feePerInput)
     if (rest > 0) {
       throw new sdkErrors.NotEnoughFundsError(`${rest} satoshis needed to cover the requested amount.`)
@@ -174,7 +196,7 @@ export class PowPegSDK {
     return { inputs, change: Math.abs(rest) }
   }
 
-  async fundPegin(psbt: Psbt, feeLevel: FeeLevel) {
+  async fundPegin(psbt: Psbt, feeLevel: FeeLevel = 'fast') {
     const amount = BigInt(psbt.txOutputs[1].value)
     const feeRate = await this.bitcoinDataSource.getFeeRate(feeLevel)
     const { inputs, change } = await this.calculateFeeAndSelectedInputs(amount, this.utxos, feeRate)
@@ -197,6 +219,13 @@ export class PowPegSDK {
       })
     })
     return { psbt, inputs, transactions: hexTransactions }
+  }
+
+  async createAndFundPegin(amount: bigint, recipientAddress: string, signer: BitcoinSigner, feeLevel: FeeLevel = 'fast') {
+    this.bitcoinSigner = signer
+    this.validatePeginAmount(amount)
+    const psbt = await this.createPegin(amount, recipientAddress)
+    return this.fundPegin(psbt, feeLevel)
   }
 
   private async signPegin(psbt: Psbt, inputs?: Utxo[], transactions?: string[]): Promise<string> {
@@ -264,7 +293,7 @@ export class PowPegSDK {
     return signer.provider?.waitForTransaction(hash)
   }
 
-  async getTransactionStatus(txHash: string, txType: TxType) {
+  async getTransactionStatus<T extends TxType>(txHash: string, txType: T) {
     return this.api.getTransactionStatus(txHash, txType)
   }
 }

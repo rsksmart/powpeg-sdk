@@ -11,3 +11,15 @@ export class NotEnoughFundsError extends Error {
     this.name = 'NotEnoughFundsError'
   }
 }
+
+export class APIError extends Error {
+  readonly statusCode?: number
+  readonly data?: unknown
+
+  constructor(message: string, statusCode?: number, data?: unknown) {
+    super(message)
+    this.name = 'APIError'
+    this.statusCode = statusCode
+    this.data = data
+  }
+}
