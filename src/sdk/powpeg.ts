@@ -1,5 +1,5 @@
 import { address, payments, Psbt, Transaction } from 'bitcoinjs-lib'
-import type { BitcoinDataSource, BitcoinSigner, Utxo, FeeLevel, AddressWithDetails, PegoutFeeEstimation, TxType } from '../types'
+import type { BitcoinDataSource, BitcoinSigner, Utxo, FeeLevel, AddressWithDetails, PegoutFeeEstimation, TxType, UnsignedPegin } from '../types'
 import { networks, type Network } from '../constants'
 import { getAddressType, remove0x } from '../utils'
 import { Bridge } from '../bridge'
@@ -193,13 +193,14 @@ export class PowPegSDK {
     if (rest > 0) {
       throw new sdkErrors.NotEnoughFundsError(`${rest} satoshis needed to cover the requested amount.`)
     }
-    return { inputs, change: Math.abs(rest) }
+    const totalFee = baseFee + feePerInput * inputs.length
+    return { inputs, change: Math.abs(rest), totalFee }
   }
 
   async fundPegin(psbt: Psbt, feeLevel: FeeLevel = 'fast') {
     const amount = BigInt(psbt.txOutputs[1].value)
     const feeRate = await this.bitcoinDataSource.getFeeRate(feeLevel)
-    const { inputs, change } = await this.calculateFeeAndSelectedInputs(amount, this.utxos, feeRate)
+    const { inputs, change, totalFee } = await this.calculateFeeAndSelectedInputs(amount, this.utxos, feeRate)
     if (change > Math.min(this.burnDustValue, this.burnDustMaxValue)) {
       psbt.addOutput({
         address: this.changeAddress ?? inputs[0].address,
@@ -218,10 +219,10 @@ export class PowPegSDK {
         },
       })
     })
-    return { psbt, inputs, transactions: hexTransactions }
+    return { psbt, inputs, transactions: hexTransactions, fee: totalFee }
   }
 
-  async createAndFundPegin(amount: bigint, recipientAddress: string, signer: BitcoinSigner, feeLevel: FeeLevel = 'fast') {
+  async createAndFundPegin(amount: bigint, recipientAddress: string, signer: BitcoinSigner, feeLevel: FeeLevel = 'fast'): Promise<UnsignedPegin> {
     this.bitcoinSigner = signer
     this.validatePeginAmount(amount)
     const psbt = await this.createPegin(amount, recipientAddress)
