@@ -114,3 +114,10 @@ export interface PeginStatusData {
 }
 
 export type StatusData = PegoutStatusData | PeginStatusData
+
+export interface UnsignedPegin {
+  psbt: Psbt
+  inputs: Utxo[]
+  transactions: string[]
+  fee: number
+}
