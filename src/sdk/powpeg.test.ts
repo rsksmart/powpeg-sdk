@@ -1,8 +1,9 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { PowPegSDK } from './powpeg'
 import type { BitcoinSigner, BitcoinDataSource } from '../types'
 import { AmountBelowMinError, NotEnoughFundsError } from '../errors'
 import { ethers } from '@rsksmart/bridges-core-sdk'
+import { TxType, PegoutStatuses, PeginStatuses } from '../types'
 
 const btcAddresses = [
   'mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn',
@@ -36,6 +37,20 @@ const createMockProvider = (balance = mockValues.highBalance) => ({
 })
 
 const mockProvider = createMockProvider()
+
+const mockApiService = {
+  getTransactionStatus: vi.fn(),
+}
+
+vi.mock('../api/api', async () => {
+  const { TxType, PegoutStatuses, PeginStatuses } = await import('../types')
+  return {
+    ApiService: vi.fn().mockImplementation(() => mockApiService),
+    TxType,
+    PegoutStatuses,
+    PeginStatuses,
+  }
+})
 
 vi.mock('@rsksmart/bridges-core-sdk', async () => {
   const original = await vi.importActual<typeof import('@rsksmart/bridges-core-sdk')>('@rsksmart/bridges-core-sdk')
@@ -122,5 +137,129 @@ describe('sdk', () => {
 
     expect(fees.bitcoinFee).toBe(15_166n)
     expect(fees.rootstockFee).toBe(300_006_150_000n)
+  })
+
+  describe('getTransactionStatus', () => {
+    const mockTxHash = '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef'
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+    })
+
+    it('should get transaction status for PEGIN transaction with CONFIRMED status', async () => {
+      const mockResponse = {
+        txDetails: {
+          btc: {
+            txId: 'btc_tx_hash_123',
+            creationDate: '2024-01-15T10:30:00Z',
+            federationAddress: '2MskK2P1Qw9QbeZ6MG5jmeWMX2d4MFANgkD',
+            amountTransferred: 100000,
+            fees: 1000,
+            refundAddress: 'mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn',
+            confirmations: 6,
+            requiredConfirmation: 6,
+            btcWTxId: 'btc_wtx_hash_123',
+            senderAddress: 'mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn',
+          },
+          rsk: {
+            recipientAddress: rskAddresses[0],
+          },
+          status: PeginStatuses.CONFIRMED,
+        },
+        type: TxType.PEGIN,
+      }
+
+      mockApiService.getTransactionStatus.mockResolvedValue(mockResponse)
+
+      const result = await sdk.getTransactionStatus(mockTxHash, TxType.PEGIN)
+
+      expect(mockApiService.getTransactionStatus).toHaveBeenCalledWith(mockTxHash, TxType.PEGIN)
+      expect(result).toEqual(mockResponse)
+      expect(result.txDetails.status).toBe(PeginStatuses.CONFIRMED)
+    })
+
+    it('should get transaction status for PEGIN transaction with WAITING_CONFIRMATIONS status', async () => {
+      const mockResponse = {
+        txDetails: {
+          btc: {
+            txId: 'btc_tx_hash_456',
+            creationDate: '2024-01-15T10:30:00Z',
+            federationAddress: '2MskK2P1Qw9QbeZ6MG5jmeWMX2d4MFANgkD',
+            amountTransferred: 50000,
+            fees: 500,
+            refundAddress: 'mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn',
+            confirmations: 2,
+            requiredConfirmation: 6,
+            btcWTxId: 'btc_wtx_hash_456',
+            senderAddress: 'mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn',
+          },
+          rsk: {
+            recipientAddress: rskAddresses[0],
+          },
+          status: PeginStatuses.WAITING_CONFIRMATIONS,
+        },
+        type: TxType.PEGIN,
+      }
+
+      mockApiService.getTransactionStatus.mockResolvedValue(mockResponse)
+
+      const result = await sdk.getTransactionStatus(mockTxHash, TxType.PEGIN)
+
+      expect(mockApiService.getTransactionStatus).toHaveBeenCalledWith(mockTxHash, TxType.PEGIN)
+      expect(result).toEqual(mockResponse)
+      expect(result.txDetails.status).toBe(PeginStatuses.WAITING_CONFIRMATIONS)
+    })
+
+    it('should get transaction status for PEGOUT transaction with PENDING status', async () => {
+      const mockResponse = {
+        txDetails: {
+          originatingRskTxHash: 'rsk_tx_hash_123',
+          rskTxHash: 'rsk_tx_hash_456',
+          rskSenderAddress: rskAddresses[0],
+          btcRecipientAddress: 'mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn',
+          valueRequestedInSatoshis: 100000,
+          valueInSatoshisToBeReceived: 95000,
+          feeInSatoshisToBePaid: 5000,
+          status: PegoutStatuses.PENDING,
+          btcRawTransaction: 'raw_btc_tx_hex',
+        },
+        type: TxType.PEGOUT,
+      }
+
+      mockApiService.getTransactionStatus.mockResolvedValue(mockResponse)
+
+      const result = await sdk.getTransactionStatus(mockTxHash, TxType.PEGOUT)
+
+      expect(mockApiService.getTransactionStatus).toHaveBeenCalledWith(mockTxHash, TxType.PEGOUT)
+      expect(result).toEqual(mockResponse)
+      expect(result.txDetails.status).toBe(PegoutStatuses.PENDING)
+    })
+
+    it('should get transaction status for PEGOUT transaction with REJECTED status', async () => {
+      const mockResponse = {
+        txDetails: {
+          originatingRskTxHash: 'rsk_tx_hash_789',
+          rskTxHash: 'rsk_tx_hash_101',
+          rskSenderAddress: rskAddresses[0],
+          btcRecipientAddress: 'mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn',
+          valueRequestedInSatoshis: 1000,
+          valueInSatoshisToBeReceived: 0,
+          feeInSatoshisToBePaid: 0,
+          status: PegoutStatuses.REJECTED,
+          btcRawTransaction: '',
+          reason: 'LOW_AMOUNT',
+        },
+        type: TxType.PEGOUT,
+      }
+
+      mockApiService.getTransactionStatus.mockResolvedValue(mockResponse)
+
+      const result = await sdk.getTransactionStatus(mockTxHash, TxType.PEGOUT)
+
+      expect(mockApiService.getTransactionStatus).toHaveBeenCalledWith(mockTxHash, TxType.PEGOUT)
+      expect(result).toEqual(mockResponse)
+      expect(result.txDetails.status).toBe(PegoutStatuses.REJECTED)
+      expect(result.txDetails.reason).toBe('LOW_AMOUNT')
+    })
   })
 })
