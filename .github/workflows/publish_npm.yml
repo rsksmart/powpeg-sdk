@@ -7,7 +7,6 @@ on:
 permissions: read-all
 
 env:
-  # flip to 'true' in local runs with act to skip the publish & post-verify
   SKIP_PUBLISH: "false"
 
 jobs:
@@ -78,7 +77,7 @@ jobs:
       - name: Pre upload validation
         id: pack
         run: |
-          pnpm pack --dry-run > output 2>&1
+          pnpm publish --dry-run --no-git-checks> output 2>&1
           PRE_UPLOAD_HASH=$(grep 'shasum' output | awk '{print $NF}')
           echo "PRE_UPLOAD_HASH=$PRE_UPLOAD_HASH" >> $GITHUB_OUTPUT
           echo "PRE_UPLOAD_HASH: $PRE_UPLOAD_HASH"
@@ -98,7 +97,7 @@ jobs:
         run: pnpm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{secrets.NPM_TOKEN}}
-      
+
       - name: Post upload validation
         if: ${{ env.SKIP_PUBLISH == 'false' }}
         id: unpack
@@ -107,7 +106,7 @@ jobs:
           PACKAGE_VERSION=$(cat package.json | jq -r .version)
           FULL_PACKAGE_NAME="${PACKAGE_NAME}@${PACKAGE_VERSION}"
           echo "Waiting for package propagation..."
-          sleep 15
+          sleep 20
           POST_UPLOAD_HASH=$(npm view "$FULL_PACKAGE_NAME" dist.shasum)
           echo "POST_UPLOAD_HASH=$POST_UPLOAD_HASH" >> $GITHUB_OUTPUT
           echo "POST_UPLOAD_HASH: $POST_UPLOAD_HASH"
