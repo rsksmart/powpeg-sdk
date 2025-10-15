@@ -35,16 +35,16 @@
     "vitest": "^3.0.8"
   },
   "dependencies": {
-    "@ledgerhq/hw-app-btc": "^10.9.0",
-    "@ledgerhq/hw-transport": "^6.31.4",
-    "@ledgerhq/hw-transport-webusb": "^6.29.4",
-    "@rsksmart/bridges-core-sdk": "^0.4.2",
+    "@ledgerhq/hw-app-btc": "^10.11.2",
+    "@ledgerhq/hw-transport": "^6.31.12",
+    "@ledgerhq/hw-transport-webusb": "^6.29.12",
+    "@rsksmart/bridges-core-sdk": "^0.5.0",
     "@rsksmart/rsk-precompiled-abis": "7.1.0-LOVELL",
-    "@trezor/connect-web": "^9.5.4",
+    "@trezor/connect-web": "^9.6.3",
     "axios": "^1.12.2",
     "bip32": "5.0.0-rc.0",
     "bitcoinjs-lib": "^6.1.7",
-    "tiny-secp256k1": "^2.2.3"
+    "tiny-secp256k1": "^2.2.4"
   },
   "packageManager": "pnpm@10.15.1+sha512.34e538c329b5553014ca8e8f4535997f96180a1d0f614339357449935350d924e22f8614682191264ec33d1462ac21561aff97f6bb18065351c162c7e8f6de67"
 }
