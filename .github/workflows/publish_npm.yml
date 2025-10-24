@@ -1,0 +1,116 @@
+name: Deploy library on NPM
+
+on:
+  release:
+    types: [created, edited, published]
+
+permissions: read-all
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Check file existence
+        id: check_files
+        uses: andstor/file-existence-action@076e0072799f4942c8bc574a82233e1e4d13e9d6 # v3.0.0
+        with:
+          files: "package.json, README.md"
+
+      - name: File exists
+        if: steps.check_files.outputs.files_exists != 'true'
+        run: |
+          echo "Files does not exist" >> $GITHUB_OUTPUT
+          exit 1
+
+      - name: Get package.json package name and match with repository name
+        id: get_package_info
+        run: |
+          echo PACKAGE_NAME=$(cat package.json | jq -r .name | cut -f2 -d"\"" | cut -f2 -d"@") >> $GITHUB_OUTPUT
+          echo PACKAGE_VERSION="refs/tags/v"$(cat package.json | jq -r .version) >> $GITHUB_OUTPUT
+          echo PACKAGE_REPOSITORY=$(cat package.json | jq -r .repository.url | sed 's/\+https//; s/\.git$//') >> $GITHUB_OUTPUT
+
+      - name: Print outputs for debugging
+        run: |
+          echo "GitHub Repo (owner/name): ${{ github.repository }}"
+          echo "Repo name only: ${{ github.event.repository.name }}"
+          echo "Package Name: ${{ steps.get_package_info.outputs.PACKAGE_NAME }}"
+          echo "Github Tag: ${{ github.ref }}"
+          echo "Package Version: ${{ steps.get_package_info.outputs.PACKAGE_VERSION }}"
+          echo "GitHub Repository HTML URL: ${{ github.event.repository.html_url }}"
+          echo "Package Repository: ${{ steps.get_package_info.outputs.PACKAGE_REPOSITORY }}"
+
+      - name: Check if package_name matches repository name
+        if: ${{ github.event.repository.name != steps.get_package_info.outputs.PACKAGE_NAME }}
+        run: exit 1
+
+      - name: Check if package version matches tag
+        if: ${{ github.ref != steps.get_package_info.outputs.PACKAGE_VERSION }}
+        run: exit 1
+
+      - name: Check if package repository matches repository URL
+        # Normalize to the HTML URL (strip trailing .git in earlier step)
+        if: ${{ github.event.repository.html_url != steps.get_package_info.outputs.PACKAGE_REPOSITORY }}
+        run: exit 1
+
+      - name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Enable corepack (pnpm)
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Pre upload validation
+        id: pack
+        run: |
+          pnpm publish --dry-run --no-git-checks> output 2>&1
+          PRE_UPLOAD_HASH=$(grep 'shasum' output | awk '{print $NF}')
+          echo "PRE_UPLOAD_HASH=$PRE_UPLOAD_HASH" >> $GITHUB_OUTPUT
+          echo "PRE_UPLOAD_HASH: $PRE_UPLOAD_HASH"
+
+      - name: Check if version is already published
+        run: |
+          PACKAGE_NAME=$(cat package.json | jq -r .name)
+          PACKAGE_VERSION=$(cat package.json | jq -r .version)
+          if pnpm view "$PACKAGE_NAME@$PACKAGE_VERSION" > /dev/null 2>&1; then
+            echo "Version $PACKAGE_VERSION of $PACKAGE_NAME is already published."
+            exit 0
+          fi
+          echo "Version $PACKAGE_VERSION of $PACKAGE_NAME is not published. Proceeding with publishing..."
+
+      - name: Upload package
+        run: pnpm publish --access public
+
+      - name: Post upload validation
+        id: unpack
+        run: |
+          PACKAGE_NAME=$(cat package.json | jq -r .name)
+          PACKAGE_VERSION=$(cat package.json | jq -r .version)
+          FULL_PACKAGE_NAME="${PACKAGE_NAME}@${PACKAGE_VERSION}"
+          echo "Waiting for package propagation..."
+          sleep 20
+          POST_UPLOAD_HASH=$(npm view "$FULL_PACKAGE_NAME" dist.shasum)
+          echo "POST_UPLOAD_HASH=$POST_UPLOAD_HASH" >> $GITHUB_OUTPUT
+          echo "POST_UPLOAD_HASH: $POST_UPLOAD_HASH"
+
+      - name: Pre and Post Upload validation
+        run: |
+          echo "Comparing hashes..."
+          echo "PRE_UPLOAD_HASH: '${{ steps.pack.outputs.PRE_UPLOAD_HASH }}'"
+          echo "POST_UPLOAD_HASH: '${{ steps.unpack.outputs.POST_UPLOAD_HASH }}'"
+          if [ "${{ steps.pack.outputs.PRE_UPLOAD_HASH }}" != "${{ steps.unpack.outputs.POST_UPLOAD_HASH }}" ]; then
+            echo "Hash mismatch detected!"
+            exit 1
+          fi
+          echo "Hashes match successfully!"
