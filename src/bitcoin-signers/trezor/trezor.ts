@@ -14,7 +14,7 @@ export class TrezorSigner implements BitcoinSigner {
   ) {}
 
   static async init(network?: Network, initOptions?: typeof TrezorConnect.init) {
-    await TrezorConnect.init({ manifest: { appUrl: '', email: '' }, ...initOptions })
+    await TrezorConnect.init({ manifest: { appUrl: '', email: '', appName: '' }, ...initOptions })
     return new TrezorSigner(network)
   }
 
