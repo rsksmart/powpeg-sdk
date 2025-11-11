@@ -75,10 +75,13 @@ jobs:
       - name: Pre upload validation
         id: pack
         run: |
-          pnpm publish --dry-run --no-git-checks> output 2>&1
+          pnpm publish --dry-run --no-git-checks> report 2>&1
           PRE_UPLOAD_HASH=$(grep 'shasum' output | awk '{print $NF}')
           echo "PRE_UPLOAD_HASH=$PRE_UPLOAD_HASH" >> $GITHUB_OUTPUT
           echo "PRE_UPLOAD_HASH: $PRE_UPLOAD_HASH"
+
+          echo "Removing temporary report file"
+          rm report 
 
       - name: Check if version is already published
         run: |
