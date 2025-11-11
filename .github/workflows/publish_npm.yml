@@ -94,7 +94,7 @@ jobs:
           echo "Version $PACKAGE_VERSION of $PACKAGE_NAME is not published. Proceeding with publishing..."
 
       - name: Upload package
-        run: pnpm publish --access public
+        run: pnpm publish --access public --no-git-checks
 
       - name: Post upload validation
         id: unpack
