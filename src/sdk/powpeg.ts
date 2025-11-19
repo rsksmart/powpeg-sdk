@@ -19,7 +19,7 @@ export class PowPegSDK {
   private minPeginAmount = 500_000n
   private peginFeeEstimationInputs = 2
   private minPegoutAmount = '0.004'
-  private bitcoinJsNetwork
+  private btcNetworkConfig: typeof networks[Network]
   private bridge: Bridge
   private api: ApiService
   private rskProvider: ethers.providers.Provider
@@ -46,7 +46,7 @@ export class PowPegSDK {
     private maxBundleSize = 10,
     private burnDustValue = 2000,
   ) {
-    this.bitcoinJsNetwork = networks[network].lib
+    this.btcNetworkConfig = networks[network]
     this.rskProvider = new ethers.providers.JsonRpcProvider(rpcProviderUrl ?? this.publicNodes[network])
     this.bridge = new Bridge(this.rskProvider)
     this.api = new ApiService(network, apiUrl)
@@ -65,8 +65,10 @@ export class PowPegSDK {
     return this._bitcoinDataSource ?? this.api
   }
 
-  private async getUtxos(addresses: AddressWithDetails[]) {
-    return Promise.all(addresses.map(({ address }) => this.bitcoinDataSource.getOutputs(address)))
+  private async getUtxos(addresses: string[] | AddressWithDetails[]): Promise<Utxo[]> {
+    const rawAddresses = addresses.map((address) => typeof address === 'string' ? address : address.address)
+    const utxoLists = await Promise.all(rawAddresses.map((address) => this.bitcoinDataSource.getOutputs(address)))
+    return utxoLists.flat()
   }
 
   private async getAddressesWithDetails(addresses: string[]) {
@@ -142,7 +144,7 @@ export class PowPegSDK {
 
   async createPegin(amount: bigint, recipientAddress: string) {
     const { addressesWithBalance, refundAddress, changeAddress } = await this.initPegin()
-    const psbt = new Psbt({ network: this.bitcoinJsNetwork })
+    const psbt = new Psbt({ network: this.btcNetworkConfig.lib })
     const { output: script } = payments.embed({ data: [this.getRskOutput(recipientAddress, refundAddress?.address)] })
     if (script) {
       psbt.addOutput({
@@ -155,7 +157,7 @@ export class PowPegSDK {
       address: bridgeAddress,
       value: Number(amount),
     })
-    this.utxos = (await this.getUtxos(addressesWithBalance)).flat()
+    this.utxos = await this.getUtxos(addressesWithBalance)
     this.changeAddress = changeAddress?.address
     return psbt
   }
@@ -296,5 +298,14 @@ export class PowPegSDK {
 
   async getTransactionStatus<T extends TxType>(txHash: string, txType: T) {
     return this.api.getTransactionStatus(txHash, txType)
+  }
+
+  async getAvailableUtxos(addresses: string | string[]): Promise<Utxo[]> {
+    const addressList = Array.isArray(addresses) ? addresses : [addresses]
+    const invalidAddresses = addressList.filter((address) => !this.btcNetworkConfig.isBtcAddress(address))
+    if (invalidAddresses.length > 0) {
+      throw new sdkErrors.InvalidAddressError(invalidAddresses)
+    }
+    return this.getUtxos(addressList)
   }
 }

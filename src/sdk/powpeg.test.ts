@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { PowPegSDK } from './powpeg'
 import type { BitcoinSigner, BitcoinDataSource } from '../types'
-import { AmountBelowMinError, NotEnoughFundsError } from '../errors'
+import { AmountBelowMinError, NotEnoughFundsError, InvalidAddressError } from '../errors'
 import { ethers } from '@rsksmart/bridges-core-sdk'
 import { TxType, PegoutStatuses, PeginStatuses } from '../types'
 
@@ -260,6 +260,52 @@ describe('sdk', () => {
       expect(result).toEqual(mockResponse)
       expect(result.txDetails.status).toBe(PegoutStatuses.REJECTED)
       expect(result.txDetails.reason).toBe('LOW_AMOUNT')
+    })
+  })
+
+  describe('getAvailableUtxos', () => {
+    beforeEach(() => {
+      vi.clearAllMocks()
+    })
+
+    it('should return UTXOs for valid addresses', async () => {
+      const validAddresses = [btcAddresses[0], btcAddresses[1]]
+      const mockUtxos = [
+        { address: btcAddresses[0], txid: 'tx1', vout: 0, amount: 1000n },
+        { address: btcAddresses[1], txid: 'tx2', vout: 1, amount: 2000n },
+      ]
+
+      mockedDataSource.getOutputs
+        .mockResolvedValueOnce([mockUtxos[0]])
+        .mockResolvedValueOnce([mockUtxos[1]])
+
+      const result = await sdk.getAvailableUtxos(validAddresses)
+
+      expect(result).toEqual(mockUtxos)
+      expect(mockedDataSource.getOutputs).toHaveBeenCalledTimes(2)
+    })
+
+    it('should return UTXOs for a single address', async () => {
+      const singleAddress = btcAddresses[0]
+      const mockUtxos = [{ address: singleAddress, txid: 'tx1', vout: 0, amount: 1000n }]
+
+      mockedDataSource.getOutputs.mockResolvedValueOnce(mockUtxos)
+
+      const result = await sdk.getAvailableUtxos(singleAddress)
+
+      expect(result).toEqual(mockUtxos)
+      expect(mockedDataSource.getOutputs).toHaveBeenCalledTimes(1)
+      expect(mockedDataSource.getOutputs).toHaveBeenCalledWith(singleAddress)
+    })
+
+    it('should throw InvalidAddressError with correct message and invalidAddresses for invalid addresses', async () => {
+      const invalidAddresses = [
+        '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa',
+        '0x8c2f0abf2b1c4d4f7f5b6e3c3f2a6b7f7c7c1d9d',
+      ]
+
+      await expect(sdk.getAvailableUtxos(invalidAddresses)).rejects.toThrow(InvalidAddressError)
+      await expect(sdk.getAvailableUtxos(invalidAddresses)).rejects.toThrow('Invalid addresses:')
     })
   })
 })
