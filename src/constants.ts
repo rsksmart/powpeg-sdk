@@ -1,3 +1,4 @@
+import { isBtcMainnetAddress, isBtcTestnetAddress } from '@rsksmart/bridges-core-sdk'
 import { networks as bitcoinJsNetworks } from 'bitcoinjs-lib'
 
 export const supportedAddressTypes = {
@@ -21,12 +22,14 @@ export const networks = {
     coin: '1',
     lib: bitcoinJsNetworks.testnet,
     xpubVersion: 0x043587cf,
+    isBtcAddress: isBtcTestnetAddress,
   },
   MAIN: {
     currency: 'bitcoin',
     coin: '0',
     lib: bitcoinJsNetworks.bitcoin,
     xpubVersion: 0x0488b21e,
+    isBtcAddress: isBtcMainnetAddress,
   },
 } as const
 
