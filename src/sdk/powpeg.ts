@@ -142,7 +142,7 @@ export class PowPegSDK {
     return totalFee
   }
 
-  async createPegin(amount: bigint, recipientAddress: string) {
+  async createPegin(amount: bigint, recipientAddress: string, selectedUtxos?: Utxo[]) {
     const { addressesWithBalance, refundAddress, changeAddress } = await this.initPegin()
     const psbt = new Psbt({ network: this.btcNetworkConfig.lib })
     const { output: script } = payments.embed({ data: [this.getRskOutput(recipientAddress, refundAddress?.address)] })
@@ -157,7 +157,7 @@ export class PowPegSDK {
       address: bridgeAddress,
       value: Number(amount),
     })
-    this.utxos = await this.getUtxos(addressesWithBalance)
+    this.utxos = selectedUtxos ?? await this.getUtxos(addressesWithBalance)
     this.changeAddress = changeAddress?.address
     return psbt
   }
@@ -224,10 +224,10 @@ export class PowPegSDK {
     return { psbt, inputs, transactions: hexTransactions, fee: totalFee }
   }
 
-  async createAndFundPegin(amount: bigint, recipientAddress: string, signer: BitcoinSigner, feeLevel: FeeLevel = 'fast'): Promise<UnsignedPegin> {
+  async createAndFundPegin(amount: bigint, recipientAddress: string, signer: BitcoinSigner, feeLevel: FeeLevel = 'fast', selectedUtxos?: Utxo[]): Promise<UnsignedPegin> {
     this.bitcoinSigner = signer
     this.validatePeginAmount(amount)
-    const psbt = await this.createPegin(amount, recipientAddress)
+    const psbt = await this.createPegin(amount, recipientAddress, selectedUtxos)
     return this.fundPegin(psbt, feeLevel)
   }
 
