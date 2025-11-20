@@ -308,4 +308,59 @@ describe('sdk', () => {
       await expect(sdk.getAvailableUtxos(invalidAddresses)).rejects.toThrow('Invalid addresses:')
     })
   })
+
+  describe('selected UTXO support', () => {
+    beforeEach(() => {
+      vi.clearAllMocks()
+    })
+
+    it('should create a peg-in with selected UTXOs', async () => {
+      const amount = 100_000n
+      const selectedUtxos = [
+        { address: btcAddresses[0], txid: 'tx1', vout: 0, amount: 500_000n },
+        { address: btcAddresses[1], txid: 'tx2', vout: 1, amount: 300_000n },
+      ]
+
+      const psbt = await sdk.createPegin(amount, rskAddresses[0], selectedUtxos)
+
+      expect(psbt.txOutputs).toHaveLength(2)
+      expect(psbt.txOutputs[0].value).toBe(0)
+      expect(psbt.txOutputs[1].value).toBe(Number(amount))
+    })
+
+    it('should create and fund a peg-in with selected UTXOs', async () => {
+      mockedDataSource.getAddressDetails
+        .mockResolvedValueOnce({ address: btcAddresses[1], balance: 0, txCount: 0 })
+        .mockResolvedValueOnce({ address: btcAddresses[2], balance: 0, txCount: 0 })
+      const txHex = '0200000001a2399abede23d11581f898eaa3b900b5fe09b8e7366bfb362e42173123fdb188000000006b483045022100836f7eb5a993d86fab93397c3cbd000b5d05fccbfa0921e5e3262b810f0085f00220123a465b2abfb73a6d555087312482b8292c5d170e087244b1130084b1be623c0121033b0017bbeced25a65c3f4e18ac49183fbbef9a2c8215a6f48ca59809cd7fd085ffffffff02af195203000000001976a9141f36d1d36d0bf2d279311db70c5b17faca75e0bb88ac0000000000000000536a4c5048454d4901007084170022b6d196534385ea12387b7e0bcfe929911662add4acf95b048323eb3c0dc549f6f233c90333424e8250a29d4f23eb51b6b0a9d01f11b067b0419aa8ad235794fc699814950d1a063a00'
+      const selectedUtxos = [
+        { address: btcAddresses[0], txid: '7309875224b1630ec4470b4d808243022f295a5595a1f32b1eb640cb2fea773e', vout: 0, amount: 1_000_000n },
+      ]
+      mockedDataSource.getTxHex.mockResolvedValue(txHex)
+
+      const result = await sdk.createAndFundPegin(500_000n, rskAddresses[0], mockedSigner, 'average', selectedUtxos)
+
+      expect(result.psbt).toBeDefined()
+      expect(result.inputs).toBeDefined()
+      expect(result.inputs.length).toBeGreaterThan(0)
+      expect(result.fee).toBeGreaterThan(0)
+      expect(result.transactions).toBeDefined()
+    })
+
+    it('should work the same way when selected UTXOs are not provided', async () => {
+      mockedDataSource.getAddressDetails
+        .mockResolvedValueOnce({ address: btcAddresses[1], balance: 1_000_000, txCount: 1 })
+        .mockResolvedValueOnce({ address: btcAddresses[2], balance: 0, txCount: 1 })
+      mockedDataSource.getOutputs.mockResolvedValue([{ address: btcAddresses[1], amount: 1_000_000n, txid: '7309875224b1630ec4470b4d808243022f295a5595a1f32b1eb640cb2fea773e', vout: 0 }])
+      mockedDataSource.getTxHex.mockResolvedValue('0200000001a2399abede23d11581f898eaa3b900b5fe09b8e7366bfb362e42173123fdb188000000006b483045022100836f7eb5a993d86fab93397c3cbd000b5d05fccbfa0921e5e3262b810f0085f00220123a465b2abfb73a6d555087312482b8292c5d170e087244b1130084b1be623c0121033b0017bbeced25a65c3f4e18ac49183fbbef9a2c8215a6f48ca59809cd7fd085ffffffff02af195203000000001976a9141f36d1d36d0bf2d279311db70c5b17faca75e0bb88ac0000000000000000536a4c5048454d4901007084170022b6d196534385ea12387b7e0bcfe929911662add4acf95b048323eb3c0dc549f6f233c90333424e8250a29d4f23eb51b6b0a9d01f11b067b0419aa8ad235794fc699814950d1a063a00')
+
+      const result = await sdk.createAndFundPegin(500_000n, rskAddresses[0], mockedSigner, 'average')
+
+      expect(result.psbt).toBeDefined()
+      expect(result.inputs).toBeDefined()
+      expect(result.inputs.length).toBeGreaterThan(0)
+      expect(result.fee).toBeGreaterThan(0)
+      expect(result.transactions).toBeDefined()
+    })
+  })
 })
