@@ -103,20 +103,17 @@ export class PowPegSDK {
     return { withBalance, withoutBalance }
   }
 
-  private async initPegin() {
+  private async getAddressesGroupedByUsage() {
     const nonChangeAddresses = await this.bitcoinSigner.getNonChangeAddresses(this.maxBundleSize)
     const changeAddresses = await this.bitcoinSigner.getChangeAddresses(this.maxBundleSize)
-    const [nonChangeAddressesWithDetails, changeAddressesWithDetails] = await Promise.all([
+    const [nonChangeDetails, changeDetails] = await Promise.all([
       this.getAddressesWithDetails(nonChangeAddresses),
       this.getAddressesWithDetails(changeAddresses),
     ])
-    const { used: usedNonChangeAddresses, unused: unusedNonChangeAddress } = this.groupAddressesByUsage(nonChangeAddressesWithDetails)
-    const { used: usedChangeAddresses, unused: unusedChangeAddresses } = this.groupAddressesByUsage(changeAddressesWithDetails)
-    const addresses = usedNonChangeAddresses.concat(usedChangeAddresses)
-    const { withBalance: addressesWithBalance } = this.groupAddressesByBalance(addresses)
-    const refundAddress = unusedNonChangeAddress[0]
-    const changeAddress = unusedChangeAddresses[0]
-    return { addressesWithBalance, refundAddress, changeAddress }
+    return {
+      nonChange: this.groupAddressesByUsage(nonChangeDetails),
+      change: this.groupAddressesByUsage(changeDetails),
+    }
   }
 
   private getRskOutput(recipientAddress: string, refundAddress?: string) {
@@ -143,9 +140,10 @@ export class PowPegSDK {
   }
 
   async createPegin(amount: bigint, recipientAddress: string, selectedUtxos?: Utxo[]) {
-    const { addressesWithBalance, refundAddress, changeAddress } = await this.initPegin()
+    const addresses = await this.getAddressesGroupedByUsage()
     const psbt = new Psbt({ network: this.btcNetworkConfig.lib })
-    const { output: script } = payments.embed({ data: [this.getRskOutput(recipientAddress, refundAddress?.address)] })
+    const refundAddress = addresses.nonChange.unused[0]?.address
+    const { output: script } = payments.embed({ data: [this.getRskOutput(recipientAddress, refundAddress)] })
     if (script) {
       psbt.addOutput({
         script,
@@ -157,8 +155,16 @@ export class PowPegSDK {
       address: bridgeAddress,
       value: Number(amount),
     })
-    this.utxos = selectedUtxos ?? await this.getUtxos(addressesWithBalance)
-    this.changeAddress = changeAddress?.address
+    if (selectedUtxos) {
+      this.utxos = selectedUtxos
+    }
+    else {
+      const usedAddresses = addresses.nonChange.used.concat(addresses.change.used)
+      const { withBalance } = this.groupAddressesByBalance(usedAddresses)
+      this.utxos = await this.getUtxos(withBalance)
+    }
+    this.changeAddress = addresses.change.unused[0]?.address
+
     return psbt
   }
 
