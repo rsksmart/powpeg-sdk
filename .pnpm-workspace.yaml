@@ -1,0 +1,2 @@
+# Ensures only packages released at least one day ago can be installed
+minimumReleaseAge: 1440
