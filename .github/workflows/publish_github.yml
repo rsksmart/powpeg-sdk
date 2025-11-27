@@ -60,15 +60,21 @@ jobs:
         if: ${{ steps.get_package_info.outputs.PACKAGE_REGISTRY != 'https://npm.pkg.github.com' }}
         run: exit 1
 
-      - name: Push package to npmjs.com
+      - name: Enable corepack (pnpm)
+        run: corepack enable
+
+      - name: Setup Node
         uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
 
         with:
-          node-version: 16
+          node-version: 22
           registry-url: https://npm.pkg.github.com
 
       - name: Install dependencies
-        run: npm install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm run build
 
       - name: Pre upload validation
         id: pack
@@ -77,7 +83,7 @@ jobs:
           echo PRE_UPLOAD_HASH=$(cat output| grep shasum | cut -f4 -d" ") >> $GITHUB_OUTPUT
 
       - name: Upload package
-        run: npm publish
+        run: pnpm publish
 
       - name: Post upload validation
         id: unpack
