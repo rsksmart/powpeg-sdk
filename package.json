@@ -1,6 +1,6 @@
 {
   "name": "@rsksmart/powpeg-sdk",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "SDK for creating native peg-in and peg-out transactions following the PowPeg protocol.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
