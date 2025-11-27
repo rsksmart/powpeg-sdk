@@ -205,8 +205,8 @@ export class PowPegSDK {
     return { inputs, change: Math.abs(rest), totalFee }
   }
 
-  async fundPegin(psbt: Psbt, feeLevel: FeeLevel = 'fast') {
-    const amount = BigInt(psbt.txOutputs[1].value)
+  async fundPegin(psbt: Psbt, feeLevel: FeeLevel = 'fast', value?: bigint) {
+    const amount = value ?? BigInt(psbt.txOutputs[1].value)
     const feeRate = await this.bitcoinDataSource.getFeeRate(feeLevel)
     const { inputs, change, totalFee } = await this.calculateFeeAndSelectedInputs(amount, this.utxos, feeRate)
     if (change > Math.min(this.burnDustValue, this.burnDustMaxValue)) {
@@ -235,6 +235,16 @@ export class PowPegSDK {
     this.validatePeginAmount(amount)
     const psbt = await this.createPegin(amount, recipientAddress, selectedUtxos)
     return this.fundPegin(psbt, feeLevel)
+  }
+
+  async createAndFundPsbt(amount: bigint, recipientAddress: string, utxos: Utxo[], feeLevel: FeeLevel = 'fast'): Promise<UnsignedPegin> {
+    const psbt = new Psbt({ network: this.btcNetworkConfig.lib })
+    psbt.addOutput({
+      address: recipientAddress,
+      value: Number(amount),
+    })
+    this.utxos = utxos
+    return this.fundPegin(psbt, feeLevel, amount)
   }
 
   private async signPegin(psbt: Psbt, inputs?: Utxo[], transactions?: string[]): Promise<string> {
