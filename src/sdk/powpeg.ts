@@ -103,20 +103,17 @@ export class PowPegSDK {
     return { withBalance, withoutBalance }
   }
 
-  private async initPegin() {
+  private async getAddressesGroupedByUsage() {
     const nonChangeAddresses = await this.bitcoinSigner.getNonChangeAddresses(this.maxBundleSize)
     const changeAddresses = await this.bitcoinSigner.getChangeAddresses(this.maxBundleSize)
-    const [nonChangeAddressesWithDetails, changeAddressesWithDetails] = await Promise.all([
+    const [nonChangeDetails, changeDetails] = await Promise.all([
       this.getAddressesWithDetails(nonChangeAddresses),
       this.getAddressesWithDetails(changeAddresses),
     ])
-    const { used: usedNonChangeAddresses, unused: unusedNonChangeAddress } = this.groupAddressesByUsage(nonChangeAddressesWithDetails)
-    const { used: usedChangeAddresses, unused: unusedChangeAddresses } = this.groupAddressesByUsage(changeAddressesWithDetails)
-    const addresses = usedNonChangeAddresses.concat(usedChangeAddresses)
-    const { withBalance: addressesWithBalance } = this.groupAddressesByBalance(addresses)
-    const refundAddress = unusedNonChangeAddress[0]
-    const changeAddress = unusedChangeAddresses[0]
-    return { addressesWithBalance, refundAddress, changeAddress }
+    return {
+      nonChange: this.groupAddressesByUsage(nonChangeDetails),
+      change: this.groupAddressesByUsage(changeDetails),
+    }
   }
 
   private getRskOutput(recipientAddress: string, refundAddress?: string) {
@@ -142,10 +139,11 @@ export class PowPegSDK {
     return totalFee
   }
 
-  async createPegin(amount: bigint, recipientAddress: string) {
-    const { addressesWithBalance, refundAddress, changeAddress } = await this.initPegin()
+  async createPegin(amount: bigint, recipientAddress: string, selectedUtxos?: Utxo[]) {
+    const addresses = await this.getAddressesGroupedByUsage()
     const psbt = new Psbt({ network: this.btcNetworkConfig.lib })
-    const { output: script } = payments.embed({ data: [this.getRskOutput(recipientAddress, refundAddress?.address)] })
+    const refundAddress = addresses.nonChange.unused[0]?.address
+    const { output: script } = payments.embed({ data: [this.getRskOutput(recipientAddress, refundAddress)] })
     if (script) {
       psbt.addOutput({
         script,
@@ -157,8 +155,16 @@ export class PowPegSDK {
       address: bridgeAddress,
       value: Number(amount),
     })
-    this.utxos = await this.getUtxos(addressesWithBalance)
-    this.changeAddress = changeAddress?.address
+    if (selectedUtxos) {
+      this.utxos = selectedUtxos
+    }
+    else {
+      const usedAddresses = addresses.nonChange.used.concat(addresses.change.used)
+      const { withBalance } = this.groupAddressesByBalance(usedAddresses)
+      this.utxos = await this.getUtxos(withBalance)
+    }
+    this.changeAddress = addresses.change.unused[0]?.address
+
     return psbt
   }
 
@@ -199,8 +205,8 @@ export class PowPegSDK {
     return { inputs, change: Math.abs(rest), totalFee }
   }
 
-  async fundPegin(psbt: Psbt, feeLevel: FeeLevel = 'fast') {
-    const amount = BigInt(psbt.txOutputs[1].value)
+  async fundPegin(psbt: Psbt, feeLevel: FeeLevel = 'fast', value?: bigint) {
+    const amount = value ?? BigInt(psbt.txOutputs[1].value)
     const feeRate = await this.bitcoinDataSource.getFeeRate(feeLevel)
     const { inputs, change, totalFee } = await this.calculateFeeAndSelectedInputs(amount, this.utxos, feeRate)
     if (change > Math.min(this.burnDustValue, this.burnDustMaxValue)) {
@@ -224,11 +230,21 @@ export class PowPegSDK {
     return { psbt, inputs, transactions: hexTransactions, fee: totalFee }
   }
 
-  async createAndFundPegin(amount: bigint, recipientAddress: string, signer: BitcoinSigner, feeLevel: FeeLevel = 'fast'): Promise<UnsignedPegin> {
+  async createAndFundPegin(amount: bigint, recipientAddress: string, signer: BitcoinSigner, feeLevel: FeeLevel = 'fast', selectedUtxos?: Utxo[]): Promise<UnsignedPegin> {
     this.bitcoinSigner = signer
     this.validatePeginAmount(amount)
-    const psbt = await this.createPegin(amount, recipientAddress)
+    const psbt = await this.createPegin(amount, recipientAddress, selectedUtxos)
     return this.fundPegin(psbt, feeLevel)
+  }
+
+  async createAndFundPsbt(amount: bigint, recipientAddress: string, utxos: Utxo[], feeLevel: FeeLevel = 'fast'): Promise<UnsignedPegin> {
+    const psbt = new Psbt({ network: this.btcNetworkConfig.lib })
+    psbt.addOutput({
+      address: recipientAddress,
+      value: Number(amount),
+    })
+    this.utxos = utxos
+    return this.fundPegin(psbt, feeLevel, amount)
   }
 
   private async signPegin(psbt: Psbt, inputs?: Utxo[], transactions?: string[]): Promise<string> {
