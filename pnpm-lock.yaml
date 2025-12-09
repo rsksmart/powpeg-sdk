@@ -10,13 +10,13 @@ importers:
     dependencies:
       '@ledgerhq/hw-app-btc':
         specifier: ^10.11.2
-        version: 10.11.2
+        version: 10.13.0
       '@ledgerhq/hw-transport':
         specifier: ^6.31.12
-        version: 6.31.12
+        version: 6.31.13
       '@ledgerhq/hw-transport-webusb':
         specifier: ^6.29.12
-        version: 6.29.12
+        version: 6.29.13
       '@rsksmart/bridges-core-sdk':
         specifier: ^0.5.0
         version: 0.5.0
@@ -25,10 +25,10 @@ importers:
         version: 7.1.0-LOVELL
       '@trezor/connect-web':
         specifier: ^9.6.4
-        version: 9.6.4(@solana/sysvars@2.3.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.8.2))(fastestsmallesttextencoderdecoder@1.0.22)(tslib@2.7.0)(typescript@5.8.2)(ws@8.18.1)
+        version: 9.6.4(@solana/sysvars@2.3.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.8.2))(fastestsmallesttextencoderdecoder@1.0.22)(tslib@2.8.1)(typescript@5.8.2)(ws@8.18.1)
       axios:
         specifier: ^1.12.2
-        version: 1.12.2
+        version: 1.13.2
       bip32:
         specifier: 5.0.0-rc.0
         version: 5.0.0-rc.0(typescript@5.8.2)
@@ -47,7 +47,7 @@ importers:
         version: 4.2.0(eslint@9.22.0)(typescript@5.8.2)
       '@vitest/coverage-v8':
         specifier: 3.0.8
-        version: 3.0.8(vitest@3.0.8(@types/node@22.15.3)(yaml@2.7.0))
+        version: 3.0.8(vitest@3.0.8(@types/node@24.10.2)(yaml@2.7.0))
       eslint:
         specifier: ^9.22.0
         version: 9.22.0
@@ -68,7 +68,7 @@ importers:
         version: 8.26.1(eslint@9.22.0)(typescript@5.8.2)
       vitest:
         specifier: ^3.0.8
-        version: 3.0.8(@types/node@22.15.3)(yaml@2.7.0)
+        version: 3.0.8(@types/node@24.10.2)(yaml@2.7.0)
 
 packages:
 
@@ -600,20 +600,20 @@ packages:
   '@jridgewell/trace-mapping@0.3.25':
     resolution: {integrity: sha512-vNk6aEwybGtawWmy/PzwnGDOjCkLWSD2wqvjGGAgOAwCGWySYXfYoxt00IJkTF+8Lb57DwOb3Aa0o9CApepiYQ==}
 
-  '@ledgerhq/devices@8.6.1':
-    resolution: {integrity: sha512-PQR2fyWz7P/wMFHY9ZLz17WgFdxC/Im0RVDcWXpp24+iRQRyxhQeX2iG4mBKUzfaAW6pOIEiWt+vmJh88QP9rQ==}
+  '@ledgerhq/devices@8.7.0':
+    resolution: {integrity: sha512-3pSOULPUhClk2oOxa6UnoyXW8+05FK7r6cpq2WiTey4kyIUjmIraO7AX9lhz9IU73dGVtBMdU+NCPPO2RYJaTQ==}
 
-  '@ledgerhq/errors@6.26.0':
-    resolution: {integrity: sha512-4OlisaDBafkn7KN5emue08lCGMVREX6T+nxj47C7W30EBA/leLAEDaVvUw5/gFOWrv8Q2A9Scb8aMM3uokyt0w==}
+  '@ledgerhq/errors@6.27.0':
+    resolution: {integrity: sha512-EE2hATONHdNP3YWFe3rZwwpSEzI5oN+q/xTjOulnjHZo84TLjungegEJ54A/Pzld0woulkkeVA27FbW5SAO1aA==}
 
-  '@ledgerhq/hw-app-btc@10.11.2':
-    resolution: {integrity: sha512-bQzRaSfgjSUqWlUktclumLOwCpJulowT/iPxzo3owXrFIFXxAsqvQP8f/27w9LnZDVQ06CBU1WduK9YDF75BGg==}
+  '@ledgerhq/hw-app-btc@10.13.0':
+    resolution: {integrity: sha512-zloeQj0yrAVbZBPxdkafihUPOb40sCh4hmDsMbwKRf8ik3binozzXKsluQQNFd6Pd77tIImXLdRZRHCwFOIVFQ==}
 
-  '@ledgerhq/hw-transport-webusb@6.29.12':
-    resolution: {integrity: sha512-mMGKPYAUz9MNcURe+hSTSHwqPwCli6D0lCl15Z4hDOpcqhZ26vwoeWVKeQp53NNCetHOl0lauPkN43Gt9pIggg==}
+  '@ledgerhq/hw-transport-webusb@6.29.13':
+    resolution: {integrity: sha512-RhQMCX2kjpI5N+4EvepDtIH9opTJxmCAEWIip4Im+ScjoSvBI1wveE5aDFhjDsHJUcKIQzIbB5jSuv0DZaajFA==}
 
-  '@ledgerhq/hw-transport@6.31.12':
-    resolution: {integrity: sha512-FO5LRIXYC8ELtaohlO8qK0b3TfHUNBZ3+CXKPHiHj2jJwrxPf4s5kcgBYrmzuf1C/1vfrMOjzyty6OgrMIbU6Q==}
+  '@ledgerhq/hw-transport@6.31.13':
+    resolution: {integrity: sha512-MrJRDk74wY980ofiFPRpTHQBbRw1wDuKbdag1zqlO1xtJglymwwY03K2kvBNvkm1RTSCPUp/nAoNG+WThZuuew==}
 
   '@ledgerhq/logs@6.13.0':
     resolution: {integrity: sha512-4+qRW2Pc8V+btL0QEmdB2X+uyx0kOWMWE1/LWsq5sZy3Q5tpi4eItJS6mB0XL3wGW59RQ+8bchNQQ1OW/va8Og==}
@@ -1276,8 +1276,8 @@ packages:
   '@types/node@10.12.18':
     resolution: {integrity: sha512-fh+pAqt4xRzPfqA6eh3Z2y6fyZavRIumvjhaCL753+TVkGKGhpPeyrJG2JftD0T9q4GF00KjefsQ+PQNDdWQaQ==}
 
-  '@types/node@22.15.3':
-    resolution: {integrity: sha512-lX7HFZeHf4QG/J7tBZqrCAXwz9J5RD56Y6MpP0eJkka8p+K0RY/yBTW7CYFJ4VGCclxqOLKmiGP5juQc6MKgcw==}
+  '@types/node@24.10.2':
+    resolution: {integrity: sha512-WOhQTZ4G8xZ1tjJTvKOpyEVSGgOTvJAfDK3FNFgELyaTpzhdgHVHeqW8V+UJvzF5BT+/B54T/1S2K6gd9c7bbA==}
 
   '@types/w3c-web-usb@1.0.10':
     resolution: {integrity: sha512-CHgUI5kTc/QLMP8hODUHhge0D4vx+9UiAwIGiT0sTy/B2XpdX1U5rJt6JSISgr6ikRT7vxV9EVAFeYZqUnl1gQ==}
@@ -1433,8 +1433,8 @@ packages:
     resolution: {integrity: sha512-wvUjBtSGN7+7SjNpq/9M2Tg350UZD3q62IFZLbRAR1bSMlCo1ZaeW+BJ+D090e4hIIZLBcTDWe4Mh4jvUDajzQ==}
     engines: {node: '>= 0.4'}
 
-  axios@1.12.2:
-    resolution: {integrity: sha512-vMJzPewAlRyOgxV2dU0Cuz2O8zzzx9VYtbJOaBgXFeLc4IV/Eg50n4LowmehOOR61S8ZMpc2K5Sa7g6A4jfkUw==}
+  axios@1.13.2:
+    resolution: {integrity: sha512-VPk9ebNqPcy5lRGuSlKx752IlDatOjT9paPlm8A7yOuW2Fbvp4X3JznJtT4f0GzGLLiWE9W8onz51SqLYwzGaA==}
 
   balanced-match@1.0.2:
     resolution: {integrity: sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw==}
@@ -1658,8 +1658,8 @@ packages:
     resolution: {integrity: sha512-Qgzu8kfBvo+cA4962jnP1KkS6Dop5NS6g7R5LFYJr4b8Ub94PPQXUksCw9PvXoeXPRRddRNC5C1JQUR2SMGtnA==}
     engines: {node: '>= 14.16.0'}
 
-  cipher-base@1.0.6:
-    resolution: {integrity: sha512-3Ek9H3X6pj5TgenXYtNWdaBon1tgYCaebd+XPg0keyjEbEfkD4KkmAxkQ/i1vYvxdcT5nscLBfq9VJRmCBcFSw==}
+  cipher-base@1.0.7:
+    resolution: {integrity: sha512-Mz9QMT5fJe7bKI7MH31UilT5cEK5EHHRCccw/YRFsRY47AuNgaV6HY3rscp0/I4Q+tTW/5zoqpSeRRI54TkDWA==}
     engines: {node: '>= 0.10'}
 
   color-convert@2.0.1:
@@ -1957,8 +1957,8 @@ packages:
     resolution: {integrity: sha512-gIXjKqtFuWEgzFRJA9WCQeSJLZDjgJUOMCMzxtvFq/37KojM1BFGufqsCy0r4qSQmYLsZYMeyRqzIWOMup03sw==}
     engines: {node: '>=14'}
 
-  form-data@4.0.4:
-    resolution: {integrity: sha512-KrGhL9Q4zjj0kiUt5OO4Mr/A/jlI2jDYs5eHBpYHPcBEVSiipAvn2Ko2HnPe20rmcuuvMHNdZFp+4IlGTMF0Ow==}
+  form-data@4.0.5:
+    resolution: {integrity: sha512-8RipRLol37bNs2bhoV67fiTEvdTrbMUYcFTiy3+wuuOnUog2QBHCZWXDRijWQfAkhBj2Uf5UnVaiWwA5vdd82w==}
     engines: {node: '>= 6'}
 
   fsevents@2.3.3:
@@ -2018,10 +2018,6 @@ packages:
   has-tostringtag@1.0.2:
     resolution: {integrity: sha512-NqADB8VjPFLM2V0VvHUewwwsw0ZWBaIdgo+ieHtK3hasLz4qeCRjYcqfB6AQrBggRKppKF8L52/VqdVsO47Dlw==}
     engines: {node: '>= 0.4'}
-
-  hash-base@3.1.0:
-    resolution: {integrity: sha512-1nmYp/rhMDiE7AYkDw+lLwlAzz0AntGIe51F3RfFfEqyQ3feY2eI/NcwC6umIQVOASPMsWJLJScWKSSvzL9IVA==}
-    engines: {node: '>=4'}
 
   hash-base@3.1.2:
     resolution: {integrity: sha512-Bb33KbowVTIj5s7Ked1OsqHUeCpz//tPwR+E2zJgJKo9Z5XolZ9b6bdUgjmYlwnWhoOQKoTd1TYToZGn5mAYOg==}
@@ -2269,8 +2265,8 @@ packages:
   mz@2.7.0:
     resolution: {integrity: sha512-z81GNO7nnYMEhrGh9LeymoE4+Yr0Wn5McHIZMK5cfQCl+NDX08sCZgUc9/6MHni9IWuFLm1Z3HTCXu2z9fN62Q==}
 
-  nan@2.22.2:
-    resolution: {integrity: sha512-DANghxFkS1plDdRsX0X9pm0Z6SJNN6gBdtXfanwoZ8hooC5gosGFSBGRYHUVPz1asKA/kMRqDRdHrluZ61SpBQ==}
+  nan@2.24.0:
+    resolution: {integrity: sha512-Vpf9qnVW1RaDkoNKFUvfxqAbtI8ncb8OJlqZ9wwpXzWPEsvsB1nvdUi6oYrHIkQ1Y/tMDnr1h4nczS0VB9Xykg==}
 
   nanoid@3.3.9:
     resolution: {integrity: sha512-SppoicMGpZvbF1l3z4x7No3OlIjP7QJvC9XR7AhZr1kL133KHnKPztkKDc+Ir4aJ/1VhTySrtKhrsycmrMQfvg==}
@@ -2455,9 +2451,6 @@ packages:
     resolution: {integrity: sha512-g6QUff04oZpHs0eG5p83rFLhHeV00ug/Yf9nZM6fLeUrPguBTkTQOdpAWWspMh55TZfVQDPaN3NQJfbVRAxdIw==}
     engines: {iojs: '>=1.0.0', node: '>=0.10.0'}
 
-  ripemd160@2.0.2:
-    resolution: {integrity: sha512-ii4iagi25WusVoiC4B4lq7pbXfAp3D9v5CwfkY33vffw2+pkDjY1D8GaN7spsxvCSx8dkPqOZCEZyfxcmJG2IA==}
-
   ripemd160@2.0.3:
     resolution: {integrity: sha512-5Di9UC0+8h1L6ZD2d7awM7E/T4uA1fJRlx6zk/NvdCCVEoAnFqvHmCuNeIKoCeIixBX/q8uM+6ycDvF8woqosA==}
     engines: {node: '>= 0.8'}
@@ -2499,8 +2492,8 @@ packages:
   scrypt-js@3.0.1:
     resolution: {integrity: sha512-cdwTTnqPu0Hyvf5in5asVdZocVDTNRmR7XEcJuIzMjJeSHybHl7vpB66AzwTaIg6CLSbtjcxc8fqcySfnTkccA==}
 
-  semver@7.7.1:
-    resolution: {integrity: sha512-hlq8tAfn0m/61p4BVRcPzIGr6LKiMwo4VM6dGi6pt4qcRkmNzTcWq6eCEjEh+qXjkMDvPlOFFSGwQjoEa6gyMA==}
+  semver@7.7.3:
+    resolution: {integrity: sha512-SdsKMrI9TdgjdweUSR9MweHA4EJ8YxHn8DFaDisvhVlUOe4BF1tLD7GAj0lIqWVl+dPb/rExr0Btby5loQm20Q==}
     engines: {node: '>=10'}
     hasBin: true
 
@@ -2677,8 +2670,8 @@ packages:
   ts-mixer@6.0.4:
     resolution: {integrity: sha512-ufKpbmrugz5Aou4wcr5Wc1UUFWOLhq+Fm6qa6P0w0K5Qw2yhaUoiWszhCVuNQyNwrlGiscHOmqYoAox1PtvgjA==}
 
-  tslib@2.7.0:
-    resolution: {integrity: sha512-gLXCKdN1/j47AiHiOkJN69hJmcbGTHI0ImLmbYLHykhgeN0jVGola9yVjFgzCUklsZQMW55o+dW7IXv3RCXDzA==}
+  tslib@2.8.1:
+    resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
 
   tsup@8.4.0:
     resolution: {integrity: sha512-b+eZbPCjz10fRryaAA7C8xlIHnf8VnsaRqydheLIqwG/Mcpfk8Z5zp3HayX7GaTygkigHl5cBUs+IhcySiIexQ==}
@@ -2739,9 +2732,6 @@ packages:
   uint8array-tools@0.0.8:
     resolution: {integrity: sha512-xS6+s8e0Xbx++5/0L+yyexukU7pz//Yg6IHg3BKhXotg1JcYtgxVcUctQ0HxLByiJzpAkNFawz1Nz5Xadzo82g==}
     engines: {node: '>=14.0.0'}
-
-  undici-types@6.21.0:
-    resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
 
   undici-types@7.16.0:
     resolution: {integrity: sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw==}
@@ -3475,18 +3465,18 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.0
 
-  '@ledgerhq/devices@8.6.1':
+  '@ledgerhq/devices@8.7.0':
     dependencies:
-      '@ledgerhq/errors': 6.26.0
+      '@ledgerhq/errors': 6.27.0
       '@ledgerhq/logs': 6.13.0
       rxjs: 7.8.2
-      semver: 7.7.1
+      semver: 7.7.3
 
-  '@ledgerhq/errors@6.26.0': {}
+  '@ledgerhq/errors@6.27.0': {}
 
-  '@ledgerhq/hw-app-btc@10.11.2':
+  '@ledgerhq/hw-app-btc@10.13.0':
     dependencies:
-      '@ledgerhq/hw-transport': 6.31.12
+      '@ledgerhq/hw-transport': 6.31.13
       '@ledgerhq/logs': 6.13.0
       '@noble/curves': 1.9.7
       '@noble/hashes': 1.8.0
@@ -3495,20 +3485,20 @@ snapshots:
       bs58: 4.0.1
       bs58check: 2.1.2
       invariant: 2.2.4
-      semver: 7.7.1
+      semver: 7.7.3
       varuint-bitcoin: 1.1.2
 
-  '@ledgerhq/hw-transport-webusb@6.29.12':
+  '@ledgerhq/hw-transport-webusb@6.29.13':
     dependencies:
-      '@ledgerhq/devices': 8.6.1
-      '@ledgerhq/errors': 6.26.0
-      '@ledgerhq/hw-transport': 6.31.12
+      '@ledgerhq/devices': 8.7.0
+      '@ledgerhq/errors': 6.27.0
+      '@ledgerhq/hw-transport': 6.31.13
       '@ledgerhq/logs': 6.13.0
 
-  '@ledgerhq/hw-transport@6.31.12':
+  '@ledgerhq/hw-transport@6.31.13':
     dependencies:
-      '@ledgerhq/devices': 8.6.1
-      '@ledgerhq/errors': 6.26.0
+      '@ledgerhq/devices': 8.7.0
+      '@ledgerhq/errors': 6.27.0
       '@ledgerhq/logs': 6.13.0
       events: 3.3.0
 
@@ -3702,7 +3692,7 @@ snapshots:
 
   '@scure/bip32@1.7.0':
     dependencies:
-      '@noble/curves': 1.9.0
+      '@noble/curves': 1.9.7
       '@noble/hashes': 1.8.0
       '@scure/base': 1.2.5
 
@@ -4102,7 +4092,7 @@ snapshots:
   '@stellar/stellar-sdk@13.3.0':
     dependencies:
       '@stellar/stellar-base': 13.1.0
-      axios: 1.12.2
+      axios: 1.13.2
       bignumber.js: 9.3.0
       eventsource: 2.0.2
       feaxios: 0.0.23
@@ -4124,30 +4114,30 @@ snapshots:
       - supports-color
       - typescript
 
-  '@trezor/analytics@1.4.3(tslib@2.7.0)':
+  '@trezor/analytics@1.4.3(tslib@2.8.1)':
     dependencies:
-      '@trezor/env-utils': 1.4.3(tslib@2.7.0)
-      '@trezor/utils': 9.4.3(tslib@2.7.0)
-      tslib: 2.7.0
+      '@trezor/env-utils': 1.4.3(tslib@2.8.1)
+      '@trezor/utils': 9.4.3(tslib@2.8.1)
+      tslib: 2.8.1
     transitivePeerDependencies:
       - expo-constants
       - expo-localization
       - react-native
 
-  '@trezor/blockchain-link-types@1.4.4(tslib@2.7.0)':
+  '@trezor/blockchain-link-types@1.4.4(tslib@2.8.1)':
     dependencies:
-      '@trezor/utils': 9.4.4(tslib@2.7.0)
-      '@trezor/utxo-lib': 2.4.4(tslib@2.7.0)
-      tslib: 2.7.0
+      '@trezor/utils': 9.4.4(tslib@2.8.1)
+      '@trezor/utxo-lib': 2.4.4(tslib@2.8.1)
+      tslib: 2.8.1
 
-  '@trezor/blockchain-link-utils@1.4.4(tslib@2.7.0)':
+  '@trezor/blockchain-link-utils@1.4.4(tslib@2.8.1)':
     dependencies:
       '@mobily/ts-belt': 3.13.1
       '@stellar/stellar-sdk': 13.3.0
-      '@trezor/env-utils': 1.4.3(tslib@2.7.0)
-      '@trezor/protobuf': 1.4.4(tslib@2.7.0)
-      '@trezor/utils': 9.4.4(tslib@2.7.0)
-      tslib: 2.7.0
+      '@trezor/env-utils': 1.4.3(tslib@2.8.1)
+      '@trezor/protobuf': 1.4.4(tslib@2.8.1)
+      '@trezor/utils': 9.4.4(tslib@2.8.1)
+      tslib: 2.8.1
       xrpl: 4.4.2
     transitivePeerDependencies:
       - bufferutil
@@ -4157,7 +4147,7 @@ snapshots:
       - react-native
       - utf-8-validate
 
-  '@trezor/blockchain-link@2.5.4(@solana/sysvars@2.3.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.8.2))(fastestsmallesttextencoderdecoder@1.0.22)(tslib@2.7.0)(typescript@5.8.2)(ws@8.18.1)':
+  '@trezor/blockchain-link@2.5.4(@solana/sysvars@2.3.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.8.2))(fastestsmallesttextencoderdecoder@1.0.22)(tslib@2.8.1)(typescript@5.8.2)(ws@8.18.1)':
     dependencies:
       '@solana-program/compute-budget': 0.8.0(@solana/kit@2.3.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.8.2)(ws@8.18.1))
       '@solana-program/stake': 0.2.1(@solana/kit@2.3.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.8.2)(ws@8.18.1))
@@ -4166,17 +4156,17 @@ snapshots:
       '@solana/kit': 2.3.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.8.2)(ws@8.18.1)
       '@solana/rpc-types': 2.3.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.8.2)
       '@stellar/stellar-sdk': 13.3.0
-      '@trezor/blockchain-link-types': 1.4.4(tslib@2.7.0)
-      '@trezor/blockchain-link-utils': 1.4.4(tslib@2.7.0)
-      '@trezor/env-utils': 1.4.3(tslib@2.7.0)
-      '@trezor/utils': 9.4.4(tslib@2.7.0)
-      '@trezor/utxo-lib': 2.4.4(tslib@2.7.0)
-      '@trezor/websocket-client': 1.2.4(tslib@2.7.0)
+      '@trezor/blockchain-link-types': 1.4.4(tslib@2.8.1)
+      '@trezor/blockchain-link-utils': 1.4.4(tslib@2.8.1)
+      '@trezor/env-utils': 1.4.3(tslib@2.8.1)
+      '@trezor/utils': 9.4.4(tslib@2.8.1)
+      '@trezor/utxo-lib': 2.4.4(tslib@2.8.1)
+      '@trezor/websocket-client': 1.2.4(tslib@2.8.1)
       '@types/web': 0.0.197
       crypto-browserify: 3.12.0
       socks-proxy-agent: 8.0.5
       stream-browserify: 3.0.0
-      tslib: 2.7.0
+      tslib: 2.8.1
       xrpl: 4.4.2
     transitivePeerDependencies:
       - '@solana/sysvars'
@@ -4191,33 +4181,33 @@ snapshots:
       - utf-8-validate
       - ws
 
-  '@trezor/connect-analytics@1.3.6(tslib@2.7.0)':
+  '@trezor/connect-analytics@1.3.6(tslib@2.8.1)':
     dependencies:
-      '@trezor/analytics': 1.4.3(tslib@2.7.0)
-      tslib: 2.7.0
+      '@trezor/analytics': 1.4.3(tslib@2.8.1)
+      tslib: 2.8.1
     transitivePeerDependencies:
       - expo-constants
       - expo-localization
       - react-native
 
-  '@trezor/connect-common@0.4.4(tslib@2.7.0)':
+  '@trezor/connect-common@0.4.4(tslib@2.8.1)':
     dependencies:
-      '@trezor/env-utils': 1.4.3(tslib@2.7.0)
+      '@trezor/env-utils': 1.4.3(tslib@2.8.1)
       '@trezor/type-utils': 1.1.9
-      '@trezor/utils': 9.4.4(tslib@2.7.0)
-      tslib: 2.7.0
+      '@trezor/utils': 9.4.4(tslib@2.8.1)
+      tslib: 2.8.1
     transitivePeerDependencies:
       - expo-constants
       - expo-localization
       - react-native
 
-  '@trezor/connect-web@9.6.4(@solana/sysvars@2.3.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.8.2))(fastestsmallesttextencoderdecoder@1.0.22)(tslib@2.7.0)(typescript@5.8.2)(ws@8.18.1)':
+  '@trezor/connect-web@9.6.4(@solana/sysvars@2.3.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.8.2))(fastestsmallesttextencoderdecoder@1.0.22)(tslib@2.8.1)(typescript@5.8.2)(ws@8.18.1)':
     dependencies:
-      '@trezor/connect': 9.6.4(@solana/sysvars@2.3.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.8.2))(fastestsmallesttextencoderdecoder@1.0.22)(tslib@2.7.0)(typescript@5.8.2)(ws@8.18.1)
-      '@trezor/connect-common': 0.4.4(tslib@2.7.0)
-      '@trezor/utils': 9.4.4(tslib@2.7.0)
-      '@trezor/websocket-client': 1.2.4(tslib@2.7.0)
-      tslib: 2.7.0
+      '@trezor/connect': 9.6.4(@solana/sysvars@2.3.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.8.2))(fastestsmallesttextencoderdecoder@1.0.22)(tslib@2.8.1)(typescript@5.8.2)(ws@8.18.1)
+      '@trezor/connect-common': 0.4.4(tslib@2.8.1)
+      '@trezor/utils': 9.4.4(tslib@2.8.1)
+      '@trezor/websocket-client': 1.2.4(tslib@2.8.1)
+      tslib: 2.8.1
     transitivePeerDependencies:
       - '@solana/sysvars'
       - bufferutil
@@ -4232,7 +4222,7 @@ snapshots:
       - utf-8-validate
       - ws
 
-  '@trezor/connect@9.6.4(@solana/sysvars@2.3.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.8.2))(fastestsmallesttextencoderdecoder@1.0.22)(tslib@2.7.0)(typescript@5.8.2)(ws@8.18.1)':
+  '@trezor/connect@9.6.4(@solana/sysvars@2.3.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.8.2))(fastestsmallesttextencoderdecoder@1.0.22)(tslib@2.8.1)(typescript@5.8.2)(ws@8.18.1)':
     dependencies:
       '@ethereumjs/common': 10.0.0
       '@ethereumjs/tx': 10.0.0
@@ -4245,28 +4235,28 @@ snapshots:
       '@solana-program/token': 0.5.1(@solana/kit@2.3.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.8.2)(ws@8.18.1))
       '@solana-program/token-2022': 0.4.2(@solana/kit@2.3.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.8.2)(ws@8.18.1))(@solana/sysvars@2.3.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.8.2))
       '@solana/kit': 2.3.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.8.2)(ws@8.18.1)
-      '@trezor/blockchain-link': 2.5.4(@solana/sysvars@2.3.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.8.2))(fastestsmallesttextencoderdecoder@1.0.22)(tslib@2.7.0)(typescript@5.8.2)(ws@8.18.1)
-      '@trezor/blockchain-link-types': 1.4.4(tslib@2.7.0)
-      '@trezor/blockchain-link-utils': 1.4.4(tslib@2.7.0)
-      '@trezor/connect-analytics': 1.3.6(tslib@2.7.0)
-      '@trezor/connect-common': 0.4.4(tslib@2.7.0)
-      '@trezor/crypto-utils': 1.1.5(tslib@2.7.0)
+      '@trezor/blockchain-link': 2.5.4(@solana/sysvars@2.3.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.8.2))(fastestsmallesttextencoderdecoder@1.0.22)(tslib@2.8.1)(typescript@5.8.2)(ws@8.18.1)
+      '@trezor/blockchain-link-types': 1.4.4(tslib@2.8.1)
+      '@trezor/blockchain-link-utils': 1.4.4(tslib@2.8.1)
+      '@trezor/connect-analytics': 1.3.6(tslib@2.8.1)
+      '@trezor/connect-common': 0.4.4(tslib@2.8.1)
+      '@trezor/crypto-utils': 1.1.5(tslib@2.8.1)
       '@trezor/device-utils': 1.1.4
-      '@trezor/env-utils': 1.4.3(tslib@2.7.0)
-      '@trezor/protobuf': 1.4.4(tslib@2.7.0)
-      '@trezor/protocol': 1.2.10(tslib@2.7.0)
-      '@trezor/schema-utils': 1.3.4(tslib@2.7.0)
-      '@trezor/transport': 1.5.4(tslib@2.7.0)
+      '@trezor/env-utils': 1.4.3(tslib@2.8.1)
+      '@trezor/protobuf': 1.4.4(tslib@2.8.1)
+      '@trezor/protocol': 1.2.10(tslib@2.8.1)
+      '@trezor/schema-utils': 1.3.4(tslib@2.8.1)
+      '@trezor/transport': 1.5.4(tslib@2.8.1)
       '@trezor/type-utils': 1.1.9
-      '@trezor/utils': 9.4.4(tslib@2.7.0)
-      '@trezor/utxo-lib': 2.4.4(tslib@2.7.0)
+      '@trezor/utils': 9.4.4(tslib@2.8.1)
+      '@trezor/utxo-lib': 2.4.4(tslib@2.8.1)
       blakejs: 1.2.1
       bs58: 6.0.0
       bs58check: 4.0.0
       cbor: 10.0.11
       cross-fetch: 4.1.0
       jws: 4.0.0
-      tslib: 2.7.0
+      tslib: 2.8.1
     transitivePeerDependencies:
       - '@solana/sysvars'
       - bufferutil
@@ -4281,61 +4271,61 @@ snapshots:
       - utf-8-validate
       - ws
 
-  '@trezor/crypto-utils@1.1.5(tslib@2.7.0)':
+  '@trezor/crypto-utils@1.1.5(tslib@2.8.1)':
     dependencies:
-      tslib: 2.7.0
+      tslib: 2.8.1
 
   '@trezor/device-utils@1.1.4': {}
 
-  '@trezor/env-utils@1.4.3(tslib@2.7.0)':
+  '@trezor/env-utils@1.4.3(tslib@2.8.1)':
     dependencies:
-      tslib: 2.7.0
+      tslib: 2.8.1
       ua-parser-js: 2.0.6
 
-  '@trezor/protobuf@1.4.4(tslib@2.7.0)':
+  '@trezor/protobuf@1.4.4(tslib@2.8.1)':
     dependencies:
-      '@trezor/schema-utils': 1.3.4(tslib@2.7.0)
+      '@trezor/schema-utils': 1.3.4(tslib@2.8.1)
       long: 5.2.5
       protobufjs: 7.4.0
-      tslib: 2.7.0
+      tslib: 2.8.1
 
-  '@trezor/protocol@1.2.10(tslib@2.7.0)':
+  '@trezor/protocol@1.2.10(tslib@2.8.1)':
     dependencies:
-      tslib: 2.7.0
+      tslib: 2.8.1
 
-  '@trezor/schema-utils@1.3.4(tslib@2.7.0)':
+  '@trezor/schema-utils@1.3.4(tslib@2.8.1)':
     dependencies:
       '@sinclair/typebox': 0.33.22
       ts-mixer: 6.0.4
-      tslib: 2.7.0
+      tslib: 2.8.1
 
-  '@trezor/transport@1.5.4(tslib@2.7.0)':
+  '@trezor/transport@1.5.4(tslib@2.8.1)':
     dependencies:
-      '@trezor/protobuf': 1.4.4(tslib@2.7.0)
-      '@trezor/protocol': 1.2.10(tslib@2.7.0)
+      '@trezor/protobuf': 1.4.4(tslib@2.8.1)
+      '@trezor/protocol': 1.2.10(tslib@2.8.1)
       '@trezor/type-utils': 1.1.9
-      '@trezor/utils': 9.4.4(tslib@2.7.0)
+      '@trezor/utils': 9.4.4(tslib@2.8.1)
       cross-fetch: 4.1.0
-      tslib: 2.7.0
+      tslib: 2.8.1
       usb: 2.15.0
     transitivePeerDependencies:
       - encoding
 
   '@trezor/type-utils@1.1.9': {}
 
-  '@trezor/utils@9.4.3(tslib@2.7.0)':
+  '@trezor/utils@9.4.3(tslib@2.8.1)':
     dependencies:
       bignumber.js: 9.3.1
-      tslib: 2.7.0
+      tslib: 2.8.1
 
-  '@trezor/utils@9.4.4(tslib@2.7.0)':
+  '@trezor/utils@9.4.4(tslib@2.8.1)':
     dependencies:
       bignumber.js: 9.3.1
-      tslib: 2.7.0
+      tslib: 2.8.1
 
-  '@trezor/utxo-lib@2.4.4(tslib@2.7.0)':
+  '@trezor/utxo-lib@2.4.4(tslib@2.8.1)':
     dependencies:
-      '@trezor/utils': 9.4.4(tslib@2.7.0)
+      '@trezor/utils': 9.4.4(tslib@2.8.1)
       bech32: 2.0.0
       bip66: 2.0.0
       bitcoin-ops: 1.4.1
@@ -4349,15 +4339,15 @@ snapshots:
       int64-buffer: 1.1.0
       pushdata-bitcoin: 1.0.1
       tiny-secp256k1: 1.1.7
-      tslib: 2.7.0
+      tslib: 2.8.1
       typeforce: 1.18.0
       varuint-bitcoin: 2.0.0
       wif: 5.0.0
 
-  '@trezor/websocket-client@1.2.4(tslib@2.7.0)':
+  '@trezor/websocket-client@1.2.4(tslib@2.8.1)':
     dependencies:
-      '@trezor/utils': 9.4.4(tslib@2.7.0)
-      tslib: 2.7.0
+      '@trezor/utils': 9.4.4(tslib@2.8.1)
+      tslib: 2.8.1
       ws: 8.18.1
     transitivePeerDependencies:
       - bufferutil
@@ -4369,9 +4359,9 @@ snapshots:
 
   '@types/node@10.12.18': {}
 
-  '@types/node@22.15.3':
+  '@types/node@24.10.2':
     dependencies:
-      undici-types: 6.21.0
+      undici-types: 7.16.0
 
   '@types/w3c-web-usb@1.0.10': {}
 
@@ -4432,7 +4422,7 @@ snapshots:
       fast-glob: 3.3.3
       is-glob: 4.0.3
       minimatch: 9.0.5
-      semver: 7.7.1
+      semver: 7.7.3
       ts-api-utils: 2.0.1(typescript@5.8.2)
       typescript: 5.8.2
     transitivePeerDependencies:
@@ -4454,7 +4444,7 @@ snapshots:
       '@typescript-eslint/types': 8.26.1
       eslint-visitor-keys: 4.2.0
 
-  '@vitest/coverage-v8@3.0.8(vitest@3.0.8(@types/node@22.15.3)(yaml@2.7.0))':
+  '@vitest/coverage-v8@3.0.8(vitest@3.0.8(@types/node@24.10.2)(yaml@2.7.0))':
     dependencies:
       '@ampproject/remapping': 2.3.0
       '@bcoe/v8-coverage': 1.0.2
@@ -4468,7 +4458,7 @@ snapshots:
       std-env: 3.8.1
       test-exclude: 7.0.1
       tinyrainbow: 2.0.0
-      vitest: 3.0.8(@types/node@22.15.3)(yaml@2.7.0)
+      vitest: 3.0.8(@types/node@24.10.2)(yaml@2.7.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -4479,13 +4469,13 @@ snapshots:
       chai: 5.2.0
       tinyrainbow: 2.0.0
 
-  '@vitest/mocker@3.0.8(vite@6.3.6(@types/node@22.15.3)(yaml@2.7.0))':
+  '@vitest/mocker@3.0.8(vite@6.3.6(@types/node@24.10.2)(yaml@2.7.0))':
     dependencies:
       '@vitest/spy': 3.0.8
       estree-walker: 3.0.3
       magic-string: 0.30.17
     optionalDependencies:
-      vite: 6.3.6(@types/node@22.15.3)(yaml@2.7.0)
+      vite: 6.3.6(@types/node@24.10.2)(yaml@2.7.0)
 
   '@vitest/pretty-format@3.0.8':
     dependencies:
@@ -4574,10 +4564,10 @@ snapshots:
     dependencies:
       possible-typed-array-names: 1.1.0
 
-  axios@1.12.2:
+  axios@1.13.2:
     dependencies:
       follow-redirects: 1.15.11
-      form-data: 4.0.4
+      form-data: 4.0.5
       proxy-from-env: 1.1.0
     transitivePeerDependencies:
       - debug
@@ -4730,7 +4720,7 @@ snapshots:
   browserify-aes@1.2.0:
     dependencies:
       buffer-xor: 1.0.3
-      cipher-base: 1.0.6
+      cipher-base: 1.0.7
       create-hash: 1.2.0
       evp_bytestokey: 1.0.3
       inherits: 2.0.4
@@ -4744,7 +4734,7 @@ snapshots:
 
   browserify-des@1.0.2:
     dependencies:
-      cipher-base: 1.0.6
+      cipher-base: 1.0.7
       des.js: 1.1.0
       inherits: 2.0.4
       safe-buffer: 5.2.1
@@ -4859,10 +4849,11 @@ snapshots:
     dependencies:
       readdirp: 4.1.1
 
-  cipher-base@1.0.6:
+  cipher-base@1.0.7:
     dependencies:
       inherits: 2.0.4
       safe-buffer: 5.2.1
+      to-buffer: 1.2.2
 
   color-convert@2.0.1:
     dependencies:
@@ -4891,18 +4882,18 @@ snapshots:
 
   create-hash@1.2.0:
     dependencies:
-      cipher-base: 1.0.6
+      cipher-base: 1.0.7
       inherits: 2.0.4
       md5.js: 1.3.5
-      ripemd160: 2.0.2
+      ripemd160: 2.0.3
       sha.js: 2.4.12
 
   create-hmac@1.1.7:
     dependencies:
-      cipher-base: 1.0.6
+      cipher-base: 1.0.7
       create-hash: 1.2.0
       inherits: 2.0.4
-      ripemd160: 2.0.2
+      ripemd160: 2.0.3
       safe-buffer: 5.2.1
       sha.js: 2.4.12
 
@@ -5071,7 +5062,7 @@ snapshots:
   eslint-compat-utils@0.6.4(eslint@9.22.0):
     dependencies:
       eslint: 9.22.0
-      semver: 7.7.1
+      semver: 7.7.3
 
   eslint-plugin-yml@1.17.0(eslint@9.22.0):
     dependencies:
@@ -5277,7 +5268,7 @@ snapshots:
       cross-spawn: 7.0.6
       signal-exit: 4.1.0
 
-  form-data@4.0.4:
+  form-data@4.0.5:
     dependencies:
       asynckit: 0.4.0
       combined-stream: 1.0.8
@@ -5344,12 +5335,6 @@ snapshots:
   has-tostringtag@1.0.2:
     dependencies:
       has-symbols: 1.1.0
-
-  hash-base@3.1.0:
-    dependencies:
-      inherits: 2.0.4
-      readable-stream: 3.6.2
-      safe-buffer: 5.2.1
 
   hash-base@3.1.2:
     dependencies:
@@ -5532,13 +5517,13 @@ snapshots:
 
   make-dir@4.0.0:
     dependencies:
-      semver: 7.7.1
+      semver: 7.7.3
 
   math-intrinsics@1.1.0: {}
 
   md5.js@1.3.5:
     dependencies:
-      hash-base: 3.1.0
+      hash-base: 3.1.2
       inherits: 2.0.4
       safe-buffer: 5.2.1
 
@@ -5584,7 +5569,7 @@ snapshots:
       object-assign: 4.1.1
       thenify-all: 1.6.0
 
-  nan@2.22.2: {}
+  nan@2.24.0: {}
 
   nanoid@3.3.9: {}
 
@@ -5696,7 +5681,7 @@ snapshots:
       '@protobufjs/path': 1.1.2
       '@protobufjs/pool': 1.1.0
       '@protobufjs/utf8': 1.1.0
-      '@types/node': 22.15.3
+      '@types/node': 24.10.2
       long: 5.2.5
 
   proxy-from-env@1.1.0: {}
@@ -5757,11 +5742,6 @@ snapshots:
 
   reusify@1.1.0: {}
 
-  ripemd160@2.0.2:
-    dependencies:
-      hash-base: 3.1.0
-      inherits: 2.0.4
-
   ripemd160@2.0.3:
     dependencies:
       hash-base: 3.1.2
@@ -5786,7 +5766,7 @@ snapshots:
 
   ripple-keypairs@2.0.0:
     dependencies:
-      '@noble/curves': 1.9.0
+      '@noble/curves': 1.9.7
       '@xrplf/isomorphic': 1.0.1
       ripple-address-codec: 5.0.0
     transitivePeerDependencies:
@@ -5849,7 +5829,7 @@ snapshots:
 
   rxjs@7.8.2:
     dependencies:
-      tslib: 2.7.0
+      tslib: 2.8.1
 
   safe-buffer@5.1.2: {}
 
@@ -5857,7 +5837,7 @@ snapshots:
 
   scrypt-js@3.0.1: {}
 
-  semver@7.7.1: {}
+  semver@7.7.3: {}
 
   set-function-length@1.2.2:
     dependencies:
@@ -5985,7 +5965,7 @@ snapshots:
       bn.js: 4.12.2
       create-hmac: 1.1.7
       elliptic: 6.6.1
-      nan: 2.22.2
+      nan: 2.24.0
 
   tiny-secp256k1@2.2.4:
     dependencies:
@@ -6039,7 +6019,7 @@ snapshots:
 
   ts-mixer@6.0.4: {}
 
-  tslib@2.7.0: {}
+  tslib@2.8.1: {}
 
   tsup@8.4.0(postcss@8.5.3)(typescript@5.8.2)(yaml@2.7.0):
     dependencies:
@@ -6106,8 +6086,6 @@ snapshots:
 
   uint8array-tools@0.0.8: {}
 
-  undici-types@6.21.0: {}
-
   undici-types@7.16.0: {}
 
   uri-js@4.4.1:
@@ -6136,13 +6114,13 @@ snapshots:
     dependencies:
       uint8array-tools: 0.0.8
 
-  vite-node@3.0.8(@types/node@22.15.3)(yaml@2.7.0):
+  vite-node@3.0.8(@types/node@24.10.2)(yaml@2.7.0):
     dependencies:
       cac: 6.7.14
       debug: 4.4.0
       es-module-lexer: 1.6.0
       pathe: 2.0.3
-      vite: 6.3.6(@types/node@22.15.3)(yaml@2.7.0)
+      vite: 6.3.6(@types/node@24.10.2)(yaml@2.7.0)
     transitivePeerDependencies:
       - '@types/node'
       - jiti
@@ -6157,7 +6135,7 @@ snapshots:
       - tsx
       - yaml
 
-  vite@6.3.6(@types/node@22.15.3)(yaml@2.7.0):
+  vite@6.3.6(@types/node@24.10.2)(yaml@2.7.0):
     dependencies:
       esbuild: 0.25.1
       fdir: 6.4.4(picomatch@4.0.2)
@@ -6166,14 +6144,14 @@ snapshots:
       rollup: 4.35.0
       tinyglobby: 0.2.13
     optionalDependencies:
-      '@types/node': 22.15.3
+      '@types/node': 24.10.2
       fsevents: 2.3.3
       yaml: 2.7.0
 
-  vitest@3.0.8(@types/node@22.15.3)(yaml@2.7.0):
+  vitest@3.0.8(@types/node@24.10.2)(yaml@2.7.0):
     dependencies:
       '@vitest/expect': 3.0.8
-      '@vitest/mocker': 3.0.8(vite@6.3.6(@types/node@22.15.3)(yaml@2.7.0))
+      '@vitest/mocker': 3.0.8(vite@6.3.6(@types/node@24.10.2)(yaml@2.7.0))
       '@vitest/pretty-format': 3.0.8
       '@vitest/runner': 3.0.8
       '@vitest/snapshot': 3.0.8
@@ -6189,11 +6167,11 @@ snapshots:
       tinyexec: 0.3.2
       tinypool: 1.0.2
       tinyrainbow: 2.0.0
-      vite: 6.3.6(@types/node@22.15.3)(yaml@2.7.0)
-      vite-node: 3.0.8(@types/node@22.15.3)(yaml@2.7.0)
+      vite: 6.3.6(@types/node@24.10.2)(yaml@2.7.0)
+      vite-node: 3.0.8(@types/node@24.10.2)(yaml@2.7.0)
       why-is-node-running: 2.3.0
     optionalDependencies:
-      '@types/node': 22.15.3
+      '@types/node': 24.10.2
     transitivePeerDependencies:
       - jiti
       - less
