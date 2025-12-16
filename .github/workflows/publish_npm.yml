@@ -2,7 +2,7 @@ name: Deploy library on NPM
 
 on:
   release:
-    types: [published, prereleased]
+    types: [published]
 
 permissions: read-all
 
