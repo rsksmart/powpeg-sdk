@@ -2,16 +2,18 @@ version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
+    target-branch: main
     schedule:
-      interval: daily
+      interval: weekly
     groups:
       gh-actions:
         patterns:
           - "*"
   - package-ecosystem: npm
     directory: /
+    target-branch: main
     schedule:
-      interval: daily
+      interval: weekly
     groups:
       dependencies:
         dependency-type: production
