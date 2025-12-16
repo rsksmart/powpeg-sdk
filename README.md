@@ -3,3 +3,15 @@
 
 # powpeg-sdk
 SDK for creating native peg-in and peg-out transactions following the PowPeg protocol.
+
+# How to publish a beta package?
+
+* Update `package.json` `version` field to the format `<version>-beta.<i++>` (eg: 1.0.1-beta.0).
+* Create tag matching the `version` field.
+* Push pre-release for the github package.
+
+# How to publish a package?
+
+* Update `package.json` `version` field to the format `<version>` (eg: 1.0.1).
+* Create tag matching the `version` field.
+* Publish the github package.
