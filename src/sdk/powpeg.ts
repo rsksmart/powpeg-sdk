@@ -68,7 +68,11 @@ export class PowPegSDK {
   private async getUtxos(addresses: string[] | AddressWithDetails[]): Promise<Utxo[]> {
     const rawAddresses = addresses.map((address) => typeof address === 'string' ? address : address.address)
     const utxoLists = await Promise.all(rawAddresses.map((address) => this.bitcoinDataSource.getOutputs(address)))
-    return utxoLists.flat()
+    const allUtxos = utxoLists.flat()
+    const uniqueUtxos = allUtxos.filter((utxo, index, self) =>
+      index === self.findIndex((u) => u.txid === utxo.txid && u.vout === utxo.vout),
+    )
+    return uniqueUtxos
   }
 
   private async getAddressesWithDetails(addresses: string[]) {
