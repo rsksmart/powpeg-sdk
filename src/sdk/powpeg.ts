@@ -73,7 +73,10 @@ export class PowPegSDK {
     const seen = new Set<string>()
     const uniqueUtxos = allUtxos.filter((utxo) => {
       const key = `${utxo.txid}:${utxo.vout}`
-      if (seen.has(key)) return false
+      if (seen.has(key)) {
+        console.warn(`[PowPegSDK] Duplicate UTXO detected and skipped: ${key}`)
+        return false
+      }
       seen.add(key)
       return true
     })
