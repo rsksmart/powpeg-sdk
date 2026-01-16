@@ -69,9 +69,15 @@ export class PowPegSDK {
     const rawAddresses = addresses.map((address) => typeof address === 'string' ? address : address.address)
     const utxoLists = await Promise.all(rawAddresses.map((address) => this.bitcoinDataSource.getOutputs(address)))
     const allUtxos = utxoLists.flat()
-    const uniqueUtxos = allUtxos.filter((utxo, index, self) =>
-      index === self.findIndex((u) => u.txid === utxo.txid && u.vout === utxo.vout),
-    )
+
+    const seen = new Set<string>()
+    const uniqueUtxos = allUtxos.filter((utxo) => {
+      const key = `${utxo.txid}:${utxo.vout}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+
     return uniqueUtxos
   }
 

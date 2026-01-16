@@ -397,6 +397,7 @@ describe('sdk', () => {
       expect(result).toHaveLength(1)
       expect(result[0].txid).toBe('same_tx_id')
       expect(result[0].vout).toBe(0)
+      expect(result[0].address).toBe(btcAddresses[0])
     })
 
     it('should not deduplicate UTXOs with same txid but different vout', async () => {
