@@ -74,6 +74,7 @@ export class PowPegSDK {
     const uniqueUtxos = allUtxos.filter((utxo) => {
       const key = `${utxo.txid}:${utxo.vout}`
       if (seen.has(key)) {
+        // eslint-disable-next-line no-console
         console.warn(`[PowPegSDK] Duplicate UTXO detected and skipped: ${key}`)
         return false
       }
