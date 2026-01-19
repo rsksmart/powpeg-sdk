@@ -68,7 +68,21 @@ export class PowPegSDK {
   private async getUtxos(addresses: string[] | AddressWithDetails[]): Promise<Utxo[]> {
     const rawAddresses = addresses.map((address) => typeof address === 'string' ? address : address.address)
     const utxoLists = await Promise.all(rawAddresses.map((address) => this.bitcoinDataSource.getOutputs(address)))
-    return utxoLists.flat()
+    const allUtxos = utxoLists.flat()
+
+    const seen = new Set<string>()
+    const uniqueUtxos = allUtxos.filter((utxo) => {
+      const key = `${utxo.txid}:${utxo.vout}`
+      if (seen.has(key)) {
+        // eslint-disable-next-line no-console
+        console.warn(`[PowPegSDK] Duplicate UTXO detected and skipped: ${key}`)
+        return false
+      }
+      seen.add(key)
+      return true
+    })
+
+    return uniqueUtxos
   }
 
   private async getAddressesWithDetails(addresses: string[]) {

@@ -363,4 +363,102 @@ describe('sdk', () => {
       expect(result.transactions).toBeDefined()
     })
   })
+
+  describe('UTXO deduplication', () => {
+    beforeEach(() => {
+      vi.clearAllMocks()
+    })
+
+    it('should deduplicate UTXOs when the same UTXO is returned for multiple addresses', async () => {
+      const duplicateUtxo = { address: btcAddresses[0], txid: 'duplicate_tx_id', vout: 0, amount: 500_000n }
+      const uniqueUtxo = { address: btcAddresses[1], txid: 'unique_tx_id', vout: 1, amount: 300_000n }
+
+      mockedDataSource.getOutputs
+        .mockResolvedValueOnce([duplicateUtxo])
+        .mockResolvedValueOnce([duplicateUtxo, uniqueUtxo])
+
+      const result = await sdk.getAvailableUtxos([btcAddresses[0], btcAddresses[1]])
+
+      expect(result).toHaveLength(2)
+      expect(result).toEqual([duplicateUtxo, uniqueUtxo])
+      expect(mockedDataSource.getOutputs).toHaveBeenCalledTimes(2)
+    })
+
+    it('should deduplicate UTXOs with same txid and vout but different addresses', async () => {
+      const utxo1 = { address: btcAddresses[0], txid: 'same_tx_id', vout: 0, amount: 500_000n }
+      const utxo2 = { address: btcAddresses[1], txid: 'same_tx_id', vout: 0, amount: 500_000n }
+
+      mockedDataSource.getOutputs
+        .mockResolvedValueOnce([utxo1])
+        .mockResolvedValueOnce([utxo2])
+
+      const result = await sdk.getAvailableUtxos([btcAddresses[0], btcAddresses[1]])
+
+      expect(result).toHaveLength(1)
+      expect(result[0].txid).toBe('same_tx_id')
+      expect(result[0].vout).toBe(0)
+      expect(result[0].address).toBe(btcAddresses[0])
+    })
+
+    it('should not deduplicate UTXOs with same txid but different vout', async () => {
+      const utxo1 = { address: btcAddresses[0], txid: 'same_tx_id', vout: 0, amount: 500_000n }
+      const utxo2 = { address: btcAddresses[0], txid: 'same_tx_id', vout: 1, amount: 300_000n }
+
+      mockedDataSource.getOutputs.mockResolvedValueOnce([utxo1, utxo2])
+
+      const result = await sdk.getAvailableUtxos(btcAddresses[0])
+
+      expect(result).toHaveLength(2)
+      expect(result).toEqual([utxo1, utxo2])
+    })
+
+    it('should handle auto-selection with duplicate UTXOs without throwing error', async () => {
+      const duplicateUtxo = { address: btcAddresses[1], txid: '7309875224b1630ec4470b4d808243022f295a5595a1f32b1eb640cb2fea773e', vout: 0, amount: 1_000_000n }
+      const txHex = '0200000001a2399abede23d11581f898eaa3b900b5fe09b8e7366bfb362e42173123fdb188000000006b483045022100836f7eb5a993d86fab93397c3cbd000b5d05fccbfa0921e5e3262b810f0085f00220123a465b2abfb73a6d555087312482b8292c5d170e087244b1130084b1be623c0121033b0017bbeced25a65c3f4e18ac49183fbbef9a2c8215a6f48ca59809cd7fd085ffffffff02af195203000000001976a9141f36d1d36d0bf2d279311db70c5b17faca75e0bb88ac0000000000000000536a4c5048454d4901007084170022b6d196534385ea12387b7e0bcfe929911662add4acf95b048323eb3c0dc549f6f233c90333424e8250a29d4f23eb51b6b0a9d01f11b067b0419aa8ad235794fc699814950d1a063a00'
+
+      mockedDataSource.getAddressDetails
+        .mockResolvedValueOnce({ address: btcAddresses[1], balance: 1_000_000, txCount: 1 })
+        .mockResolvedValueOnce({ address: btcAddresses[2], balance: 1_000_000, txCount: 1 })
+
+      mockedDataSource.getOutputs
+        .mockResolvedValueOnce([duplicateUtxo])
+        .mockResolvedValueOnce([duplicateUtxo])
+
+      mockedDataSource.getTxHex.mockResolvedValue(txHex)
+
+      const result = await sdk.createAndFundPegin(500_000n, rskAddresses[0], mockedSigner, 'average')
+
+      expect(result.psbt).toBeDefined()
+      expect(result.inputs).toBeDefined()
+      expect(result.inputs.length).toBe(1)
+      expect(result.inputs[0].txid).toBe(duplicateUtxo.txid)
+      expect(result.inputs[0].vout).toBe(duplicateUtxo.vout)
+    })
+
+    it('should create PSBT with no duplicate inputs when API returns duplicates', async () => {
+      const duplicateUtxo = { address: btcAddresses[1], txid: '7309875224b1630ec4470b4d808243022f295a5595a1f32b1eb640cb2fea773e', vout: 0, amount: 1_000_000n }
+      const uniqueUtxo = { address: btcAddresses[2], txid: 'a2399abede23d11581f898eaa3b900b5fe09b8e7366bfb362e42173123fdb188', vout: 0, amount: 800_000n }
+      const txHex = '0200000001a2399abede23d11581f898eaa3b900b5fe09b8e7366bfb362e42173123fdb188000000006b483045022100836f7eb5a993d86fab93397c3cbd000b5d05fccbfa0921e5e3262b810f0085f00220123a465b2abfb73a6d555087312482b8292c5d170e087244b1130084b1be623c0121033b0017bbeced25a65c3f4e18ac49183fbbef9a2c8215a6f48ca59809cd7fd085ffffffff02af195203000000001976a9141f36d1d36d0bf2d279311db70c5b17faca75e0bb88ac0000000000000000536a4c5048454d4901007084170022b6d196534385ea12387b7e0bcfe929911662add4acf95b048323eb3c0dc549f6f233c90333424e8250a29d4f23eb51b6b0a9d01f11b067b0419aa8ad235794fc699814950d1a063a00'
+
+      mockedDataSource.getAddressDetails
+        .mockResolvedValueOnce({ address: btcAddresses[1], balance: 1_000_000, txCount: 1 })
+        .mockResolvedValueOnce({ address: btcAddresses[2], balance: 800_000, txCount: 1 })
+
+      mockedDataSource.getOutputs
+        .mockResolvedValueOnce([duplicateUtxo, uniqueUtxo])
+        .mockResolvedValueOnce([duplicateUtxo])
+
+      mockedDataSource.getTxHex.mockResolvedValue(txHex)
+
+      const result = await sdk.createAndFundPegin(500_000n, rskAddresses[0], mockedSigner, 'average')
+
+      expect(result.psbt).toBeDefined()
+      expect(result.inputs).toBeDefined()
+      expect(result.inputs.length).toBe(1)
+
+      const inputKeys = result.inputs.map((input) => `${input.txid}:${input.vout}`)
+      const uniqueInputKeys = new Set(inputKeys)
+      expect(inputKeys.length).toBe(uniqueInputKeys.size)
+    })
+  })
 })
