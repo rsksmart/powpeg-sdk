@@ -6,6 +6,9 @@ import { Bridge } from '../bridge'
 import { ApiService } from '../api/api'
 import * as sdkErrors from '../errors'
 import { assertTruthy, ethers } from '@rsksmart/bridges-core-sdk'
+import { NoOpTelemetryProvider } from '../telemetry/noop'
+import { SafeTelemetryProvider } from '../telemetry/safe'
+import type { TelemetryProvider } from '../telemetry/types'
 
 export class PowPegSDK {
   private txHeaderSizeInBytes = 13
@@ -23,19 +26,21 @@ export class PowPegSDK {
   private bridge: Bridge
   private api: ApiService
   private rskProvider: ethers.providers.Provider
+  private telemetry: TelemetryProvider
   private publicNodes: Record<Network, string> = {
     MAIN: 'https://public-node.rsk.co',
     TEST: 'https://public-node.testnet.rsk.co',
   }
 
   /**
-   * @param {BitcoinSigner | null} _bitcoinSigner - An instance of a class that implements the BitcoinSigner interface.
-   * @param {BitcoinDataSource | null} _bitcoinDataSource - An instance of a class that implements the BitcoinDataSource interface or null if you won't use peg-in operations.
+   * @param {BitcoinSigner | null} _bitcoinSigner - An instance of a class that implements the {@link BitcoinSigner} interface.
+   * @param {BitcoinDataSource | null} _bitcoinDataSource - An instance of a class that implements the {@link BitcoinDataSource} interface or null if you won't use peg-in operations.
    * @param {Network} network - The network to use. Either 'MAIN' or 'TEST'.
    * @param {string} rpcProviderUrl - URL of either your own Rootstock node, the Rootstock RPC API or a third-party node provider. If not provided, it will default to the Rootstock public node for the specified network.
-   * @param {string} apiUrl - The URL of the API to use. If not provided, it will default to the production 2WP API URL for the specified network and use it as BitcoinDataSource.
+   * @param {string} apiUrl - The URL of the API to use. If not provided, it will default to the production 2WP API URL for the specified network and use it as {@link BitcoinDataSource}.
    * @param {number} maxBundleSize - The maximum number of addresses to ask for while creating a peg-in transaction. Defaults to 10.
    * @param {number} burnDustValue - The value in satoshis to consider as dust to burn. Defaults to 2000.
+   * @param {TelemetryProvider} telemetry - An instance of a class that implements the {@link TelemetryProvider} interface for logging, profiling, and error tracking. Defaults to {@link NoOpTelemetryProvider}.
    */
   constructor(
     private _bitcoinSigner: BitcoinSigner | null,
@@ -45,11 +50,13 @@ export class PowPegSDK {
     apiUrl?: string,
     private maxBundleSize = 10,
     private burnDustValue = 2000,
+    telemetry: TelemetryProvider = new NoOpTelemetryProvider(),
   ) {
     this.btcNetworkConfig = networks[network]
     this.rskProvider = new ethers.providers.JsonRpcProvider(rpcProviderUrl ?? this.publicNodes[network])
     this.bridge = new Bridge(this.rskProvider)
     this.api = new ApiService(network, apiUrl)
+    this.telemetry = new SafeTelemetryProvider(telemetry)
   }
 
   private get bitcoinSigner() {
@@ -74,8 +81,7 @@ export class PowPegSDK {
     const uniqueUtxos = allUtxos.filter((utxo) => {
       const key = `${utxo.txid}:${utxo.vout}`
       if (seen.has(key)) {
-        // eslint-disable-next-line no-console
-        console.warn(`[PowPegSDK] Duplicate UTXO detected and skipped: ${key}`)
+        this.telemetry.log('warn', 'Duplicate UTXO detected and skipped', { utxo: key })
         return false
       }
       seen.add(key)
@@ -147,39 +153,50 @@ export class PowPegSDK {
   }
 
   async estimatePeginFee(amount: bigint, feeLevel: FeeLevel = 'fast') {
-    const feeRate = await this.bitcoinDataSource.getFeeRate(feeLevel)
-    const { baseFee, feePerInput } = await this.calculatePeginFee(amount, feeRate)
-    const totalFee = baseFee + feePerInput * this.peginFeeEstimationInputs
-    return totalFee
+    try {
+      const feeRate = await this.bitcoinDataSource.getFeeRate(feeLevel)
+      const { baseFee, feePerInput } = await this.calculatePeginFee(amount, feeRate)
+      return baseFee + feePerInput * this.peginFeeEstimationInputs
+    }
+    catch (error) {
+      this.telemetry.captureException(error as Error, { operation: 'estimatePeginFee' })
+      throw error
+    }
   }
 
   async createPegin(amount: bigint, recipientAddress: string, selectedUtxos?: Utxo[]) {
-    const addresses = await this.getAddressesGroupedByUsage()
-    const psbt = new Psbt({ network: this.btcNetworkConfig.lib })
-    const refundAddress = addresses.nonChange.unused[0]?.address
-    const { output: script } = payments.embed({ data: [this.getRskOutput(recipientAddress, refundAddress)] })
-    if (script) {
+    try {
+      const addresses = await this.getAddressesGroupedByUsage()
+      const psbt = new Psbt({ network: this.btcNetworkConfig.lib })
+      const refundAddress = addresses.nonChange.unused[0]?.address
+      const { output: script } = payments.embed({ data: [this.getRskOutput(recipientAddress, refundAddress)] })
+      if (script) {
+        psbt.addOutput({
+          script,
+          value: 0,
+        })
+      }
+      const bridgeAddress = await this.bridge.getFederationAddress()
       psbt.addOutput({
-        script,
-        value: 0,
+        address: bridgeAddress,
+        value: Number(amount),
       })
-    }
-    const bridgeAddress = await this.bridge.getFederationAddress()
-    psbt.addOutput({
-      address: bridgeAddress,
-      value: Number(amount),
-    })
-    if (selectedUtxos) {
-      this.utxos = selectedUtxos
-    }
-    else {
-      const usedAddresses = addresses.nonChange.used.concat(addresses.change.used)
-      const { withBalance } = this.groupAddressesByBalance(usedAddresses)
-      this.utxos = await this.getUtxos(withBalance)
-    }
-    this.changeAddress = addresses.change.unused[0]?.address
+      if (selectedUtxos) {
+        this.utxos = selectedUtxos
+      }
+      else {
+        const usedAddresses = addresses.nonChange.used.concat(addresses.change.used)
+        const { withBalance } = this.groupAddressesByBalance(usedAddresses)
+        this.utxos = await this.getUtxos(withBalance)
+      }
+      this.changeAddress = addresses.change.unused[0]?.address
 
-    return psbt
+      return psbt
+    }
+    catch (error) {
+      this.telemetry.captureException(error as Error, { operation: 'createPegin' })
+      throw error
+    }
   }
 
   private selectInputs(amount: bigint, utxos: Utxo[], baseFee: number, feePerInput: number) {
@@ -220,45 +237,63 @@ export class PowPegSDK {
   }
 
   async fundPegin(psbt: Psbt, feeLevel: FeeLevel = 'fast', value?: bigint) {
-    const amount = value ?? BigInt(psbt.txOutputs[1].value)
-    const feeRate = await this.bitcoinDataSource.getFeeRate(feeLevel)
-    const { inputs, change, totalFee } = await this.calculateFeeAndSelectedInputs(amount, this.utxos, feeRate)
-    if (change > Math.min(this.burnDustValue, this.burnDustMaxValue)) {
-      psbt.addOutput({
-        address: this.changeAddress ?? inputs[0].address,
-        value: change,
+    try {
+      const amount = value ?? BigInt(psbt.txOutputs[1].value)
+      const feeRate = await this.bitcoinDataSource.getFeeRate(feeLevel)
+      const { inputs, change, totalFee } = await this.calculateFeeAndSelectedInputs(amount, this.utxos, feeRate)
+      if (change > Math.min(this.burnDustValue, this.burnDustMaxValue)) {
+        psbt.addOutput({
+          address: this.changeAddress ?? inputs[0].address,
+          value: change,
+        })
+      }
+      const hexTransactions = await Promise.all(inputs.map((input) => this.bitcoinDataSource.getTxHex(input.txid)))
+      inputs.forEach((input, index) => {
+        const transaction = Transaction.fromHex(hexTransactions[index])
+        psbt.addInput({
+          hash: input.txid,
+          index: input.vout,
+          witnessUtxo: {
+            script: transaction.outs[input.vout].script,
+            value: transaction.outs[input.vout].value,
+          },
+        })
       })
+      return { psbt, inputs, transactions: hexTransactions, fee: totalFee }
     }
-    const hexTransactions = await Promise.all(inputs.map((input) => this.bitcoinDataSource.getTxHex(input.txid)))
-    inputs.forEach((input, index) => {
-      const transaction = Transaction.fromHex(hexTransactions[index])
-      psbt.addInput({
-        hash: input.txid,
-        index: input.vout,
-        witnessUtxo: {
-          script: transaction.outs[input.vout].script,
-          value: transaction.outs[input.vout].value,
-        },
-      })
-    })
-    return { psbt, inputs, transactions: hexTransactions, fee: totalFee }
+    catch (error) {
+      this.telemetry.captureException(error as Error, { operation: 'fundPegin' })
+      throw error
+    }
   }
 
   async createAndFundPegin(amount: bigint, recipientAddress: string, signer: BitcoinSigner, feeLevel: FeeLevel = 'fast', selectedUtxos?: Utxo[]): Promise<UnsignedPegin> {
-    this.bitcoinSigner = signer
-    this.validatePeginAmount(amount)
-    const psbt = await this.createPegin(amount, recipientAddress, selectedUtxos)
-    return this.fundPegin(psbt, feeLevel)
+    try {
+      this.bitcoinSigner = signer
+      this.validatePeginAmount(amount)
+      const psbt = await this.createPegin(amount, recipientAddress, selectedUtxos)
+      return await this.fundPegin(psbt, feeLevel)
+    }
+    catch (error) {
+      this.telemetry.captureException(error as Error, { operation: 'createAndFundPegin' })
+      throw error
+    }
   }
 
   async createAndFundPsbt(amount: bigint, recipientAddress: string, utxos: Utxo[], feeLevel: FeeLevel = 'fast'): Promise<UnsignedPegin> {
-    const psbt = new Psbt({ network: this.btcNetworkConfig.lib })
-    psbt.addOutput({
-      address: recipientAddress,
-      value: Number(amount),
-    })
-    this.utxos = utxos
-    return this.fundPegin(psbt, feeLevel, amount)
+    try {
+      const psbt = new Psbt({ network: this.btcNetworkConfig.lib })
+      psbt.addOutput({
+        address: recipientAddress,
+        value: Number(amount),
+      })
+      this.utxos = utxos
+      return await this.fundPegin(psbt, feeLevel, amount)
+    }
+    catch (error) {
+      this.telemetry.captureException(error as Error, { operation: 'createAndFundPsbt' })
+      throw error
+    }
   }
 
   private async signPegin(psbt: Psbt, inputs?: Utxo[], transactions?: string[]): Promise<string> {
@@ -266,8 +301,14 @@ export class PowPegSDK {
   }
 
   async signAndBroadcastPegin(psbt: Psbt, inputs?: Utxo[], transactions?: string[]): Promise<string> {
-    const signedTx = await this.signPegin(psbt, inputs, transactions)
-    return this.bitcoinDataSource.broadcast(signedTx)
+    try {
+      const signedTx = await this.signPegin(psbt, inputs, transactions)
+      return await this.bitcoinDataSource.broadcast(signedTx)
+    }
+    catch (error) {
+      this.telemetry.captureException(error as Error, { operation: 'signAndBroadcastPegin' })
+      throw error
+    }
   }
 
   private validateMinimumPegoutAmount(amount: string): void {
@@ -289,53 +330,82 @@ export class PowPegSDK {
   }
 
   async estimatePegoutFees(amount: string, fromAddress: string = ethers.constants.AddressZero): Promise<PegoutFeeEstimation> {
-    this.validateMinimumPegoutAmount(amount)
-    const tx = this.createPegoutTransaction(amount, fromAddress)
-    const [gas, gasPrice, bitcoinFee] = await Promise.all([
-      this.rskProvider.estimateGas(tx),
-      this.rskProvider.getGasPrice(),
-      this.bridge.getPegoutEstimatedFee(),
-    ])
-    const rootstockFee = gas.mul(gasPrice).toBigInt()
+    try {
+      this.validateMinimumPegoutAmount(amount)
+      const tx = this.createPegoutTransaction(amount, fromAddress)
+      const [gas, gasPrice, bitcoinFee] = await Promise.all([
+        this.rskProvider.estimateGas(tx),
+        this.rskProvider.getGasPrice(),
+        this.bridge.getPegoutEstimatedFee(),
+      ])
+      const rootstockFee = gas.mul(gasPrice).toBigInt()
 
-    return {
-      bitcoinFee,
-      rootstockFee,
+      return {
+        bitcoinFee,
+        rootstockFee,
+      }
+    }
+    catch (error) {
+      this.telemetry.captureException(error as Error, { operation: 'estimatePegoutFees' })
+      throw error
     }
   }
 
   async createPegout(amount: string, senderAccount: string) {
-    const fees = await this.estimatePegoutFees(amount, senderAccount)
-    const amountBN = ethers.utils.parseUnits(amount, 18).toBigInt()
-    const balance = await this.rskProvider.getBalance(senderAccount)
-    if (balance.lt(amountBN)) {
-      throw new sdkErrors.NotEnoughFundsError(`Requested amount ${amountBN} is greater than current balance ${balance}.`)
-    }
-    const tx = this.createPegoutTransaction(amount, senderAccount)
+    try {
+      const fees = await this.estimatePegoutFees(amount, senderAccount)
+      const amountBN = ethers.utils.parseUnits(amount, 18).toBigInt()
+      const balance = await this.rskProvider.getBalance(senderAccount)
+      if (balance.lt(amountBN)) {
+        throw new sdkErrors.NotEnoughFundsError(`Requested amount ${amountBN} is greater than current balance ${balance}.`)
+      }
+      const tx = this.createPegoutTransaction(amount, senderAccount)
 
-    return {
-      tx,
-      rootstockFee: fees.rootstockFee,
-      bitcoinFee: fees.bitcoinFee,
+      return {
+        tx,
+        rootstockFee: fees.rootstockFee,
+        bitcoinFee: fees.bitcoinFee,
+      }
+    }
+    catch (error) {
+      this.telemetry.captureException(error as Error, { operation: 'createPegout' })
+      throw error
     }
   }
 
   async signAndBroadcastPegout(tx: { from: string, to: string, value: string }, signer: ethers.Signer) {
-    const { hash } = await signer.sendTransaction(tx)
-
-    return signer.provider?.waitForTransaction(hash)
+    try {
+      const { hash } = await signer.sendTransaction(tx)
+      return await signer.provider?.waitForTransaction(hash)
+    }
+    catch (error) {
+      this.telemetry.captureException(error as Error, { operation: 'signAndBroadcastPegout' })
+      throw error
+    }
   }
 
   async getTransactionStatus<T extends TxType>(txHash: string, txType: T) {
-    return this.api.getTransactionStatus(txHash, txType)
+    try {
+      return await this.api.getTransactionStatus(txHash, txType)
+    }
+    catch (error) {
+      this.telemetry.captureException(error as Error, { operation: 'getTransactionStatus' })
+      throw error
+    }
   }
 
   async getAvailableUtxos(addresses: string | string[]): Promise<Utxo[]> {
-    const addressList = Array.isArray(addresses) ? addresses : [addresses]
-    const invalidAddresses = addressList.filter((address) => !this.btcNetworkConfig.isBtcAddress(address))
-    if (invalidAddresses.length > 0) {
-      throw new sdkErrors.InvalidAddressError(invalidAddresses)
+    try {
+      const addressList = Array.isArray(addresses) ? addresses : [addresses]
+      const invalidAddresses = addressList.filter((addr) => !this.btcNetworkConfig.isBtcAddress(addr))
+      if (invalidAddresses.length > 0) {
+        throw new sdkErrors.InvalidAddressError(invalidAddresses)
+      }
+      return await this.getUtxos(addressList)
     }
-    return this.getUtxos(addressList)
+    catch (error) {
+      this.telemetry.captureException(error as Error, { operation: 'getAvailableUtxos' })
+      throw error
+    }
   }
 }

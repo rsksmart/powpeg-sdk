@@ -42,6 +42,9 @@ importers:
       '@eslint/js':
         specifier: ^9.22.0
         version: 9.22.0
+      '@sentry/browser':
+        specifier: 10.38.0
+        version: 10.38.0
       '@stylistic/eslint-plugin':
         specifier: ^4.2.0
         version: 4.2.0(eslint@9.22.0)(typescript@5.8.2)
@@ -895,6 +898,30 @@ packages:
 
   '@scure/bip39@1.6.0':
     resolution: {integrity: sha512-+lF0BbLiJNwVlev4eKelw1WWLaiKXw7sSl8T6FvBlWkdX+94aGJ4o8XjUdlyhTCjd8c+B3KT3JfS8P0bLRNU6A==}
+
+  '@sentry-internal/browser-utils@10.38.0':
+    resolution: {integrity: sha512-UOJtYmdcxHCcV0NPfXFff/a95iXl/E0EhuQ1y0uE0BuZDMupWSF5t2BgC4HaE5Aw3RTjDF3XkSHWoIF6ohy7eA==}
+    engines: {node: '>=18'}
+
+  '@sentry-internal/feedback@10.38.0':
+    resolution: {integrity: sha512-JXneg9zRftyfy1Fyfc39bBlF/Qd8g4UDublFFkVvdc1S6JQPlK+P6q22DKz3Pc8w3ySby+xlIq/eTu9Pzqi4KA==}
+    engines: {node: '>=18'}
+
+  '@sentry-internal/replay-canvas@10.38.0':
+    resolution: {integrity: sha512-OXWM9jEqNYh4VTvrMu7v+z1anz+QKQ/fZXIZdsO7JTT2lGNZe58UUMeoq386M+Saxen8F9SUH7yTORy/8KI5qw==}
+    engines: {node: '>=18'}
+
+  '@sentry-internal/replay@10.38.0':
+    resolution: {integrity: sha512-YWIkL6/dnaiQyFiZXJ/nN+NXGv/15z45ia86bE/TMq01CubX/DUOilgsFz0pk2v/pg3tp/U2MskLO9Hz0cnqeg==}
+    engines: {node: '>=18'}
+
+  '@sentry/browser@10.38.0':
+    resolution: {integrity: sha512-3phzp1YX4wcQr9mocGWKbjv0jwtuoDBv7+Y6Yfrys/kwyaL84mDLjjQhRf4gL5SX7JdYkhBp4WaiNlR0UC4kTA==}
+    engines: {node: '>=18'}
+
+  '@sentry/core@10.38.0':
+    resolution: {integrity: sha512-1pubWDZE5y5HZEPMAZERP4fVl2NH3Ihp1A+vMoVkb3Qc66Diqj1WierAnStlZP7tCx0TBa0dK85GTW/ZFYyB9g==}
+    engines: {node: '>=18'}
 
   '@sinclair/typebox@0.33.22':
     resolution: {integrity: sha512-auUj4k+f4pyrIVf4GW5UKquSZFHJWri06QgARy9C0t9ZTjJLIuNIrr1yl9bWcJWJ1Gz1vOvYN1D+QPaIlNMVkQ==}
@@ -3710,6 +3737,34 @@ snapshots:
     dependencies:
       '@noble/hashes': 1.8.0
       '@scure/base': 1.2.5
+
+  '@sentry-internal/browser-utils@10.38.0':
+    dependencies:
+      '@sentry/core': 10.38.0
+
+  '@sentry-internal/feedback@10.38.0':
+    dependencies:
+      '@sentry/core': 10.38.0
+
+  '@sentry-internal/replay-canvas@10.38.0':
+    dependencies:
+      '@sentry-internal/replay': 10.38.0
+      '@sentry/core': 10.38.0
+
+  '@sentry-internal/replay@10.38.0':
+    dependencies:
+      '@sentry-internal/browser-utils': 10.38.0
+      '@sentry/core': 10.38.0
+
+  '@sentry/browser@10.38.0':
+    dependencies:
+      '@sentry-internal/browser-utils': 10.38.0
+      '@sentry-internal/feedback': 10.38.0
+      '@sentry-internal/replay': 10.38.0
+      '@sentry-internal/replay-canvas': 10.38.0
+      '@sentry/core': 10.38.0
+
+  '@sentry/core@10.38.0': {}
 
   '@sinclair/typebox@0.33.22': {}
 
