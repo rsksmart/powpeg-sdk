@@ -47,9 +47,8 @@ describe('SafeTelemetryProvider', () => {
   it('does not execute the function twice when wrapped provider throws after invoking it', () => {
     const wrapped = createThrowingProvider()
     vi.mocked(wrapped.profile).mockImplementation((_name, fn) => {
-      const result = fn()
+      fn()
       throw new Error('profile failed after fn')
-      return result
     })
     const safe = new SafeTelemetryProvider(wrapped)
     const fn = vi.fn(() => 'ok')
