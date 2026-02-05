@@ -156,7 +156,12 @@ export class PowPegSDK {
     try {
       const feeRate = await this.bitcoinDataSource.getFeeRate(feeLevel)
       const { baseFee, feePerInput } = await this.calculatePeginFee(amount, feeRate)
-      return baseFee + feePerInput * this.peginFeeEstimationInputs
+      const totalFee = baseFee + feePerInput * this.peginFeeEstimationInputs
+      this.telemetry.log('info', 'Estimated pegin fee', {
+        amount: amount.toString(),
+        totalFee,
+      })
+      return totalFee
     }
     catch (error) {
       this.telemetry.captureException(error as Error, { operation: 'estimatePeginFee' })
@@ -339,6 +344,12 @@ export class PowPegSDK {
         this.bridge.getPegoutEstimatedFee(),
       ])
       const rootstockFee = gas.mul(gasPrice).toBigInt()
+
+      this.telemetry.log('info', 'Estimated peg-out fees', {
+        amount,
+        bitcoinFee: bitcoinFee.toString(),
+        rootstockFee: rootstockFee.toString(),
+      })
 
       return {
         bitcoinFee,

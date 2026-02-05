@@ -7,8 +7,23 @@ const logLevelToSeverity: Record<LogLevel, SeverityLevel> = {
   error: 'error',
 }
 
+interface SentryLike {
+  withScope: (callback: (scope: ScopeLike) => void) => void
+  captureException: (error: unknown) => void
+  captureMessage: (message: string, options?: { level?: SeverityLevel }) => void
+  startSpan: <T>(options: { name: string, op: string }, callback: () => T) => T
+}
+
+interface ScopeLike {
+  setTag: (key: string, value: string) => void
+  setContext: (name: string, context: Record<string, unknown> | null) => void
+}
+
 export class SentryTelemetryProvider implements TelemetryProvider {
-  private constructor(private sentry: typeof import('@sentry/browser')) {}
+  private constructor(
+    private sentry: SentryLike,
+    private tag: string,
+  ) {}
 
   /**
    * Creates and initializes a SentryTelemetryProvider.
@@ -17,7 +32,11 @@ export class SentryTelemetryProvider implements TelemetryProvider {
    * @note Profiling requires the server to return `Document-Policy: js-profiling` header.
    * @see https://docs.sentry.io/platforms/javascript/profiling/
    */
-  static async create(dsn: string, options?: Record<string, unknown>): Promise<SentryTelemetryProvider> {
+  static async create(
+    dsn: string,
+    options?: Record<string, unknown>,
+    tag = 'powpeg-sdk',
+  ): Promise<SentryTelemetryProvider> {
     const Sentry = await import('@sentry/browser')
     Sentry.init({
       dsn,
@@ -30,21 +49,39 @@ export class SentryTelemetryProvider implements TelemetryProvider {
       profileLifecycle: 'trace',
       ...options,
     })
-    return new SentryTelemetryProvider(Sentry)
+    return new SentryTelemetryProvider(Sentry, tag)
   }
 
   captureException(error: Error, context?: Record<string, unknown>): void {
-    this.sentry.captureException(error, { extra: context })
+    this.sentry.withScope((scope) => {
+      scope.setTag('source', this.tag)
+      if (context) {
+        scope.setContext('powpeg', context)
+      }
+      this.sentry.captureException(error)
+    })
   }
 
   log(level: LogLevel, message: string, data?: Record<string, unknown>): void {
-    this.sentry.captureMessage(message, {
-      level: logLevelToSeverity[level],
-      extra: data,
+    this.sentry.withScope((scope) => {
+      scope.setTag('source', this.tag)
+      if (data) {
+        scope.setContext('powpeg', data)
+      }
+      this.sentry.captureMessage(message, {
+        level: logLevelToSeverity[level],
+      })
     })
   }
 
   profile<T>(name: string, fn: () => T | Promise<T>): T | Promise<T> {
     return this.sentry.startSpan({ name, op: 'function' }, () => fn())
+  }
+
+  static fromInstance(
+    sentry: SentryLike,
+    tag = 'powpeg-sdk',
+  ): SentryTelemetryProvider {
+    return new SentryTelemetryProvider(sentry, tag)
   }
 }
