@@ -29,7 +29,16 @@ export class SafeTelemetryProvider implements TelemetryProvider {
     }
 
     try {
-      return this.wrapped.profile(name, wrappedFn)
+      const result = this.wrapped.profile(name, wrappedFn)
+      if (result instanceof Promise) {
+        return result.catch((error) => {
+          if (invoked) {
+            throw error
+          }
+          return wrappedFn()
+        })
+      }
+      return result
     }
     catch (error) {
       if (invoked) {

@@ -32,15 +32,16 @@ describe('SafeTelemetryProvider', () => {
     expect(fn).toHaveBeenCalledTimes(1)
   })
 
-  it('executes the provided function when profile fails (async)', async () => {
-    const safe = new SafeTelemetryProvider(createThrowingProvider())
+  it('executes the provided function when profile rejects before invoking it', async () => {
+    const wrapped = createThrowingProvider()
+    vi.mocked(wrapped.profile).mockImplementation(() => Promise.reject(new Error('profile failed')))
+    const safe = new SafeTelemetryProvider(wrapped)
     const fn = vi.fn(async () => {
       await Promise.resolve()
       return 'ok'
     })
-    const result = await safe.profile('async', fn)
 
-    expect(result).toBe('ok')
+    await expect(safe.profile('async', fn)).resolves.toBe('ok')
     expect(fn).toHaveBeenCalledTimes(1)
   })
 
