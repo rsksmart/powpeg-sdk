@@ -7,6 +7,10 @@ import { ApiService } from '../api/api'
 import * as sdkErrors from '../errors'
 import { assertTruthy, ethers } from '@rsksmart/bridges-core-sdk'
 
+/**
+ * Main entry point for creating and broadcasting native PowPeg peg-in (BTC -> RSK) and
+ * peg-out (RSK -> BTC) transactions.
+ */
 export class PowPegSDK {
   private txHeaderSizeInBytes = 13
   private txOutputSizeInBytes = 32
@@ -146,6 +150,12 @@ export class PowPegSDK {
     return Buffer.from(output, 'hex')
   }
 
+  /**
+   * Estimates the total Bitcoin network fee (in satoshis) for a peg-in of the given amount.
+   * @param {bigint} amount - The peg-in amount in satoshis.
+   * @param {FeeLevel} feeLevel - The fee rate tier to use. Defaults to 'fast'.
+   * @returns {Promise<number>} The estimated total fee in satoshis, based on a base transaction size and a fixed number of inputs.
+   */
   async estimatePeginFee(amount: bigint, feeLevel: FeeLevel = 'fast') {
     const feeRate = await this.bitcoinDataSource.getFeeRate(feeLevel)
     const { baseFee, feePerInput } = await this.calculatePeginFee(amount, feeRate)
@@ -153,6 +163,15 @@ export class PowPegSDK {
     return totalFee
   }
 
+  /**
+   * Builds an unfunded PSBT for a peg-in: an RSKT-prefixed OP_RETURN output encoding the
+   * recipient (and, if available, a refund address), plus an output paying the bridge's
+   * federation address. Also stores the UTXOs and change address to be used by `fundPegin`.
+   * @param {bigint} amount - The peg-in amount in satoshis to send to the federation address.
+   * @param {string} recipientAddress - The Rootstock address that will receive the pegged-in funds.
+   * @param {Utxo[]} selectedUtxos - UTXOs to use as inputs. If omitted, UTXOs are resolved from the configured bitcoin signer's used addresses.
+   * @returns {Promise<Psbt>} The unfunded PSBT (without inputs) ready to be passed to `fundPegin`.
+   */
   async createPegin(amount: bigint, recipientAddress: string, selectedUtxos?: Utxo[]) {
     const addresses = await this.getAddressesGroupedByUsage()
     const psbt = new Psbt({ network: this.btcNetworkConfig.lib })
@@ -219,6 +238,14 @@ export class PowPegSDK {
     return { inputs, change: Math.abs(rest), totalFee }
   }
 
+  /**
+   * Funds a peg-in PSBT by selecting UTXOs to cover the amount plus fees, adding a change
+   * output (unless it's below the dust threshold), and adding the corresponding inputs.
+   * @param {Psbt} psbt - The PSBT to fund. Its second output's value is used as the amount if `value` isn't provided.
+   * @param {FeeLevel} feeLevel - The fee rate tier to use. Defaults to 'fast'.
+   * @param {bigint} value - The amount to fund, in satoshis. Defaults to the PSBT's second output value.
+   * @returns {Promise<{psbt: Psbt, inputs: Utxo[], transactions: string[], fee: number}>} The funded PSBT, the selected inputs, their raw hex transactions, and the total fee in satoshis.
+   */
   async fundPegin(psbt: Psbt, feeLevel: FeeLevel = 'fast', value?: bigint) {
     const amount = value ?? BigInt(psbt.txOutputs[1].value)
     const feeRate = await this.bitcoinDataSource.getFeeRate(feeLevel)
@@ -244,6 +271,16 @@ export class PowPegSDK {
     return { psbt, inputs, transactions: hexTransactions, fee: totalFee }
   }
 
+  /**
+   * Convenience method that sets the bitcoin signer, validates the amount, and runs
+   * `createPegin` followed by `fundPegin` in sequence.
+   * @param {bigint} amount - The peg-in amount in satoshis.
+   * @param {string} recipientAddress - The Rootstock address that will receive the pegged-in funds.
+   * @param {BitcoinSigner} signer - The bitcoin signer used to derive addresses and later sign the transaction.
+   * @param {FeeLevel} feeLevel - The fee rate tier to use. Defaults to 'fast'.
+   * @param {Utxo[]} selectedUtxos - UTXOs to use as inputs. If omitted, UTXOs are resolved from the signer's used addresses.
+   * @returns {Promise<UnsignedPegin>} The funded, unsigned PSBT along with its inputs, raw transactions, and fee.
+   */
   async createAndFundPegin(amount: bigint, recipientAddress: string, signer: BitcoinSigner, feeLevel: FeeLevel = 'fast', selectedUtxos?: Utxo[]): Promise<UnsignedPegin> {
     this.bitcoinSigner = signer
     this.validatePeginAmount(amount)
@@ -251,6 +288,16 @@ export class PowPegSDK {
     return this.fundPegin(psbt, feeLevel)
   }
 
+  /**
+   * Builds and funds a plain PSBT paying `amount` to `recipientAddress` using the given UTXOs.
+   * Unlike `createAndFundPegin`, this does not add the PowPeg OP_RETURN output, so it is not
+   * itself a peg-in transaction.
+   * @param {bigint} amount - The amount in satoshis to send to `recipientAddress`.
+   * @param {string} recipientAddress - The Bitcoin address to receive the funds.
+   * @param {Utxo[]} utxos - The UTXOs to use as inputs.
+   * @param {FeeLevel} feeLevel - The fee rate tier to use. Defaults to 'fast'.
+   * @returns {Promise<UnsignedPegin>} The funded, unsigned PSBT along with its inputs, raw transactions, and fee.
+   */
   async createAndFundPsbt(amount: bigint, recipientAddress: string, utxos: Utxo[], feeLevel: FeeLevel = 'fast'): Promise<UnsignedPegin> {
     const psbt = new Psbt({ network: this.btcNetworkConfig.lib })
     psbt.addOutput({
@@ -265,6 +312,14 @@ export class PowPegSDK {
     return this.bitcoinSigner.signTransaction(psbt, inputs, transactions)
   }
 
+  /**
+   * Signs a funded peg-in PSBT with the configured bitcoin signer and broadcasts it via the
+   * configured bitcoin data source.
+   * @param {Psbt} psbt - The funded PSBT to sign.
+   * @param {Utxo[]} inputs - The UTXOs corresponding to the PSBT's inputs, as returned by `fundPegin`.
+   * @param {string[]} transactions - The raw hex transactions corresponding to the inputs, as returned by `fundPegin`.
+   * @returns {Promise<string>} The broadcasted transaction's id/hash.
+   */
   async signAndBroadcastPegin(psbt: Psbt, inputs?: Utxo[], transactions?: string[]): Promise<string> {
     const signedTx = await this.signPegin(psbt, inputs, transactions)
     return this.bitcoinDataSource.broadcast(signedTx)
@@ -288,6 +343,13 @@ export class PowPegSDK {
     }
   }
 
+  /**
+   * Estimates both the Rootstock gas fee and the Bitcoin network fee for a peg-out of the
+   * given amount.
+   * @param {string} amount - The peg-out amount, as a decimal string in RBTC (18 decimals).
+   * @param {string} fromAddress - The Rootstock sender address used to estimate gas. Defaults to the zero address.
+   * @returns {Promise<PegoutFeeEstimation>} The estimated bitcoin fee (satoshis) and rootstock fee (wei).
+   */
   async estimatePegoutFees(amount: string, fromAddress: string = ethers.constants.AddressZero): Promise<PegoutFeeEstimation> {
     this.validateMinimumPegoutAmount(amount)
     const tx = this.createPegoutTransaction(amount, fromAddress)
@@ -304,6 +366,13 @@ export class PowPegSDK {
     }
   }
 
+  /**
+   * Builds a peg-out transaction request (a plain RSK transfer to the bridge address) after
+   * validating the minimum amount and that the sender has sufficient balance.
+   * @param {string} amount - The peg-out amount, as a decimal string in RBTC (18 decimals).
+   * @param {string} senderAccount - The Rootstock address sending the funds.
+   * @returns {Promise<{tx: {from: string, to: string, value: string}, rootstockFee: bigint, bitcoinFee: bigint}>} The unsigned transaction request along with the estimated rootstock and bitcoin fees.
+   */
   async createPegout(amount: string, senderAccount: string) {
     const fees = await this.estimatePegoutFees(amount, senderAccount)
     const amountBN = ethers.utils.parseUnits(amount, 18).toBigInt()
@@ -320,16 +389,34 @@ export class PowPegSDK {
     }
   }
 
+  /**
+   * Sends a peg-out transaction with the given ethers signer and waits for it to be mined.
+   * @param {{from: string, to: string, value: string}} tx - The transaction request, as returned by `createPegout`.
+   * @param {ethers.Signer} signer - The ethers signer used to send the transaction.
+   * @returns {Promise<ethers.providers.TransactionReceipt | undefined>} The transaction receipt once mined, or undefined if the signer has no provider.
+   */
   async signAndBroadcastPegout(tx: { from: string, to: string, value: string }, signer: ethers.Signer) {
     const { hash } = await signer.sendTransaction(tx)
 
     return signer.provider?.waitForTransaction(hash)
   }
 
+  /**
+   * Fetches the current status of a peg-in or peg-out transaction from the configured API.
+   * @param {string} txHash - The transaction hash to look up (an RSK tx hash for peg-outs, a BTC tx id for peg-ins).
+   * @param {TxType} txType - Whether the transaction is a peg-in or a peg-out.
+   * @returns {Promise<StatusData>} The transaction's status details.
+   */
   async getTransactionStatus<T extends TxType>(txHash: string, txType: T) {
     return this.api.getTransactionStatus(txHash, txType)
   }
 
+  /**
+   * Fetches the available UTXOs for one or more Bitcoin addresses, deduplicated by txid:vout.
+   * @param {string | string[]} addresses - One or more Bitcoin addresses to query, validated against the configured network.
+   * @returns {Promise<Utxo[]>} The available UTXOs for the given addresses.
+   * @throws {InvalidAddressError} If any of the addresses is not a valid address for the configured network.
+   */
   async getAvailableUtxos(addresses: string | string[]): Promise<Utxo[]> {
     const addressList = Array.isArray(addresses) ? addresses : [addresses]
     const invalidAddresses = addressList.filter((address) => !this.btcNetworkConfig.isBtcAddress(address))
