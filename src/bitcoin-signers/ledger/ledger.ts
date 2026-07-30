@@ -9,6 +9,10 @@ import type { CreateTransactionArg } from '@ledgerhq/hw-app-btc/lib/createTransa
 import { supportedAddressTypes, networks, type AddressType, type Network } from '../../constants'
 import { LedgerTransportService } from './ledger-transport'
 
+/**
+ * {@link BitcoinSigner} backed by a Ledger hardware wallet, connected over WebUSB.
+ * Device operations are queued so only one runs against the transport at a time.
+ */
 export class LedgerSigner implements BitcoinSigner {
   private readonly addresses = new Map<string, string>()
   private readonly transportService: LedgerTransportService
@@ -22,12 +26,21 @@ export class LedgerSigner implements BitcoinSigner {
     this.transportService = new LedgerTransportService(transport)
   }
 
+  /**
+   * Opens a WebUSB transport to a connected Ledger device and returns a ready-to-use signer.
+   * @param {Network} [network] - The network to derive addresses for. Defaults to `'TEST'`.
+   * @returns {Promise<LedgerSigner>} The initialized signer.
+   */
   static async init(network: Network = 'TEST'): Promise<LedgerSigner> {
     const transport = await TransportWebUSB.create()
     const connection = new Btc({ transport, currency: networks[network].currency })
     return new LedgerSigner(connection, transport, network)
   }
 
+  /**
+   * Closes and reopens the WebUSB transport to the Ledger device, queued behind any in-flight operation.
+   * @returns {Promise<LedgerSigner>} A freshly initialized signer for the default (`'TEST'`) network.
+   */
   async reinit() {
     return this.transportService.enqueue(async () => {
       await this.transport.close()
@@ -35,6 +48,7 @@ export class LedgerSigner implements BitcoinSigner {
     })
   }
 
+  /** The Bitcoin address type used to derive addresses (`'LEGACY'`, `'SEGWIT'` or `'NATIVE SEGWIT'`). */
   set addressType(addressType: AddressType) {
     this._addressType = addressType
   }
@@ -80,10 +94,18 @@ export class LedgerSigner implements BitcoinSigner {
     })
   }
 
+  /**
+   * @param {number} bundleSize - Number of change addresses to derive.
+   * @returns {Promise<string[]>} `bundleSize` change addresses derived from the Ledger device.
+   */
   async getChangeAddresses(bundleSize: number): Promise<string[]> {
     return this.getAddresses(bundleSize, true)
   }
 
+  /**
+   * @param {number} bundleSize - Number of receive addresses to derive.
+   * @returns {Promise<string[]>} `bundleSize` receive (non-change) addresses derived from the Ledger device.
+   */
   async getNonChangeAddresses(bundleSize: number): Promise<string[]> {
     return this.getAddresses(bundleSize)
   }
@@ -109,6 +131,13 @@ export class LedgerSigner implements BitcoinSigner {
     return this.connection.serializeTransactionOutputs({ outputs } as LedgerTransaction).toString('hex')
   }
 
+  /**
+   * Signs the given PSBT on the Ledger device, queued behind any in-flight operation.
+   * @param {Psbt} psbt - The PSBT to sign.
+   * @param {Utxo[]} inputs - The PSBT's inputs, used to look up each input's previously derived address path.
+   * @param {string[]} transactions - Raw hex transactions for `inputs`, required by the Ledger app to verify each input.
+   * @returns {Promise<string>} The signed, serialized transaction.
+   */
   async signTransaction(psbt: Psbt, inputs: Utxo[], transactions: string[]): Promise<string> {
     return this.transportService.enqueue(async () => {
       const ledgerInputs = this.getInputs(inputs, transactions)
