@@ -4,6 +4,7 @@ import { Psbt } from 'bitcoinjs-lib'
 import { getAddressType } from '../../utils'
 import { supportedAddressTypes, networks, type AddressType, type Network } from '../../constants'
 
+/** {@link BitcoinSigner} backed by a Trezor hardware wallet, connected via `@trezor/connect-web`. */
 export class TrezorSigner implements BitcoinSigner {
   private readonly bitcoinTxVersion = 1
   private readonly addresses = new Map<string, number[]>()
@@ -13,16 +14,27 @@ export class TrezorSigner implements BitcoinSigner {
     private _addressType: AddressType = 'NATIVE SEGWIT',
   ) {}
 
+  /**
+   * Initializes the Trezor connection and returns a ready-to-use signer.
+   * @param {Network} [network] - The network to derive addresses for. Defaults to `'TEST'`.
+   * @param {typeof TrezorConnect.init} [initOptions] - Extra options merged into the `TrezorConnect.init` call.
+   * @returns {Promise<TrezorSigner>} The initialized signer.
+   */
   static async init(network?: Network, initOptions?: typeof TrezorConnect.init) {
     await TrezorConnect.init({ manifest: { appUrl: '', email: '', appName: '' }, ...initOptions })
     return new TrezorSigner(network)
   }
 
+  /**
+   * Disposes the current Trezor connection and re-initializes it.
+   * @returns {Promise<TrezorSigner>} A freshly initialized signer for the default (`'TEST'`) network.
+   */
   static async reinit() {
     TrezorConnect.dispose()
     return TrezorSigner.init()
   }
 
+  /** The Bitcoin address type used to derive addresses (`'LEGACY'`, `'SEGWIT'` or `'NATIVE SEGWIT'`). */
   set addressType(addressType: AddressType) {
     this._addressType = addressType
   }
@@ -55,10 +67,18 @@ export class TrezorSigner implements BitcoinSigner {
     return addresses
   }
 
+  /**
+   * @param {number} bundleSize - Number of change addresses to derive.
+   * @returns {Promise<string[]>} `bundleSize` change addresses derived from the Trezor device.
+   */
   async getChangeAddresses(bundleSize: number): Promise<string[]> {
     return this.getAddresses(bundleSize, true)
   }
 
+  /**
+   * @param {number} bundleSize - Number of receive addresses to derive.
+   * @returns {Promise<string[]>} `bundleSize` receive (non-change) addresses derived from the Trezor device.
+   */
   async getNonChangeAddresses(bundleSize: number): Promise<string[]> {
     return this.getAddresses(bundleSize)
   }
@@ -106,6 +126,12 @@ export class TrezorSigner implements BitcoinSigner {
     })
   }
 
+  /**
+   * Signs the given PSBT's inputs/outputs on the Trezor device.
+   * @param {Psbt} psbt - The PSBT to sign.
+   * @param {Utxo[]} utxos - The PSBT's inputs, used to look up each input's derivation path and script type.
+   * @returns {Promise<string>} The serialized signed transaction, or an empty string if signing didn't succeed.
+   */
   async signTransaction(psbt: Psbt, utxos: Utxo[]): Promise<string> {
     const inputs = this.getInputs(utxos)
     const outputs = this.getOutputs(psbt)
