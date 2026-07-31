@@ -1,5 +1,6 @@
 import TrezorConnect, { PROTO } from '@trezor/connect-web'
 import type { BitcoinSigner, Utxo } from '../../types'
+import { assertTruthy } from '@rsksmart/bridges-core-sdk'
 import { Psbt } from 'bitcoinjs-lib'
 import { getAddressType } from '../../utils'
 import { supportedAddressTypes, networks, type AddressType, type Network } from '../../constants'
@@ -17,10 +18,10 @@ export class TrezorSigner implements BitcoinSigner {
   /**
    * Initializes the Trezor connection and returns a ready-to-use signer.
    * @param {Network} [network] - The network to derive addresses for. Defaults to `'TEST'`.
-   * @param {typeof TrezorConnect.init} [initOptions] - Extra options merged into the `TrezorConnect.init` call.
+   * @param {Partial<Parameters<typeof TrezorConnect.init>[0]>} [initOptions] - Extra options merged into the `TrezorConnect.init` call.
    * @returns {Promise<TrezorSigner>} The initialized signer.
    */
-  static async init(network?: Network, initOptions?: typeof TrezorConnect.init) {
+  static async init(network?: Network, initOptions?: Partial<Parameters<typeof TrezorConnect.init>[0]>) {
     await TrezorConnect.init({ manifest: { appUrl: '', email: '', appName: '' }, ...initOptions })
     return new TrezorSigner(network)
   }
@@ -129,10 +130,11 @@ export class TrezorSigner implements BitcoinSigner {
   /**
    * Signs the given PSBT's inputs/outputs on the Trezor device.
    * @param {Psbt} psbt - The PSBT to sign.
-   * @param {Utxo[]} utxos - The PSBT's inputs, used to look up each input's derivation path and script type.
+   * @param {Utxo[]} [utxos] - The PSBT's inputs, used to look up each input's derivation path and script type. Required — TrezorSigner cannot sign from the PSBT alone.
    * @returns {Promise<string>} The serialized signed transaction, or an empty string if signing didn't succeed.
    */
-  async signTransaction(psbt: Psbt, utxos: Utxo[]): Promise<string> {
+  async signTransaction(psbt: Psbt, utxos?: Utxo[]): Promise<string> {
+    assertTruthy(utxos, 'TrezorSigner.signTransaction requires utxos to look up input derivation paths')
     const inputs = this.getInputs(utxos)
     const outputs = this.getOutputs(psbt)
     const result = await TrezorConnect.signTransaction({

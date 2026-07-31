@@ -42,10 +42,12 @@ Install it as a dependency of your own app:
 pnpm add @rsksmart/powpeg-sdk
 ```
 
-`PowPegSDK`'s constructor takes the network, and optional URLs for the two services it talks to — there's no `.env` file to configure for the SDK itself; these are runtime constructor parameters instead:
+`PowPegSDK`'s constructor takes a `BitcoinSigner`, a `BitcoinDataSource`, the network, and optional URLs for the two services it talks to — there's no `.env` file to configure for the SDK itself; these are runtime constructor parameters instead, in this order:
 
 | Parameter | Purpose | Default when omitted |
 |---|---|---|
+| `bitcoinSigner` | `BitcoinSigner` used to sign peg-in transactions (e.g. `LedgerSigner`, `TrezorSigner`) | `null` — required only for operations that sign transactions |
+| `bitcoinDataSource` | `BitcoinDataSource` used for fee rates, UTXOs, tx broadcast and tx status | `null` — falls back to the built-in `apiUrl`-backed source |
 | `network` | `'MAIN'` or `'TEST'` — selects Bitcoin network params and address validation rules | required |
 | `rpcProviderUrl` | Rootstock JSON-RPC endpoint used to read the bridge precompile and send peg-outs | RSK public node for the given network (`https://public-node.rsk.co` / `https://public-node.testnet.rsk.co`) |
 | `apiUrl` | 2WP API used as the default `BitcoinDataSource` (fee rates, UTXOs, tx broadcast, tx status) when no custom `BitcoinDataSource` is supplied | production 2WP API for the given network (`https://api.2wp.rootstock.io` / `https://api.2wp.testnet.rootstock.io`) |

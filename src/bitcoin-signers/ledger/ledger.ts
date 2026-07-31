@@ -2,6 +2,7 @@ import Btc from '@ledgerhq/hw-app-btc'
 import type Transport from '@ledgerhq/hw-transport'
 import TransportWebUSB from '@ledgerhq/hw-transport-webusb'
 import type { BitcoinSigner, Utxo } from '../../types'
+import { assertTruthy } from '@rsksmart/bridges-core-sdk'
 import { deriveAddress } from '../../utils'
 import { Transaction, type Psbt } from 'bitcoinjs-lib'
 import type { Transaction as LedgerTransaction } from '@ledgerhq/hw-app-btc/lib/types'
@@ -134,11 +135,13 @@ export class LedgerSigner implements BitcoinSigner {
   /**
    * Signs the given PSBT on the Ledger device, queued behind any in-flight operation.
    * @param {Psbt} psbt - The PSBT to sign.
-   * @param {Utxo[]} inputs - The PSBT's inputs, used to look up each input's previously derived address path.
-   * @param {string[]} transactions - Raw hex transactions for `inputs`, required by the Ledger app to verify each input.
+   * @param {Utxo[]} [inputs] - The PSBT's inputs, used to look up each input's previously derived address path. Required — LedgerSigner cannot sign from the PSBT alone.
+   * @param {string[]} [transactions] - Raw hex transactions for `inputs`, required by the Ledger app to verify each input.
    * @returns {Promise<string>} The signed, serialized transaction.
    */
-  async signTransaction(psbt: Psbt, inputs: Utxo[], transactions: string[]): Promise<string> {
+  async signTransaction(psbt: Psbt, inputs?: Utxo[], transactions?: string[]): Promise<string> {
+    assertTruthy(inputs, "LedgerSigner.signTransaction requires inputs to look up each UTXO's derived address path")
+    assertTruthy(transactions, 'LedgerSigner.signTransaction requires the raw hex transactions for each input')
     return this.transportService.enqueue(async () => {
       const ledgerInputs = this.getInputs(inputs, transactions)
       const paths = inputs.map((input) => this.addresses.get(input.address)).filter((item): item is string => !!item)
