@@ -1,5 +1,5 @@
 import { address, payments, Psbt, Transaction } from 'bitcoinjs-lib'
-import type { BitcoinDataSource, BitcoinSigner, Utxo, FeeLevel, AddressWithDetails, PegoutFeeEstimation, TxType, UnsignedPegin } from '../types'
+import type { BitcoinDataSource, BitcoinSigner, Utxo, FeeLevel, AddressWithDetails, PegoutFeeEstimation, Feature, TxType, UnsignedPegin } from '../types'
 import { networks, type Network } from '../constants'
 import { getAddressType, remove0x } from '../utils'
 import { Bridge } from '../bridge'
@@ -328,6 +328,10 @@ export class PowPegSDK {
 
   async getTransactionStatus<T extends TxType>(txHash: string, txType: T) {
     return this.api.getTransactionStatus(txHash, txType)
+  }
+
+  async getFeatures(): Promise<Feature[]> {
+    return this.api.getFeatures()
   }
 
   async getAvailableUtxos(addresses: string | string[]): Promise<Utxo[]> {

@@ -34,6 +34,23 @@ export interface PegoutFeeEstimation {
   rootstockFee: bigint
 }
 
+export interface SupportedBrowsers {
+  chrome: boolean
+  firefox: boolean
+  safari: boolean
+  edge: boolean
+  brave: boolean
+  chromium: boolean
+  opera: boolean
+}
+
+export interface Feature {
+  name: string
+  value: string
+  version: number
+  supportedBrowsers?: SupportedBrowsers
+}
+
 export enum TxType {
   PEGIN = 'PEGIN',
   PEGOUT = 'PEGOUT',
