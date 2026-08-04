@@ -35,7 +35,7 @@ pnpm lint:fix      # auto-fix
 ```
 
 ## Consuming the package
-
+[`See on NPM`](https://www.npmjs.com/package/@rsksmart/powpeg-sdk)
 Install it as a dependency of your own app:
 
 ```bash
