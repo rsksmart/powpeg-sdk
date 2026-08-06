@@ -1,3 +1,4 @@
+/** Thrown when a requested peg-in or peg-out amount is below the protocol's minimum allowed amount. */
 export class AmountBelowMinError extends Error {
   constructor(message?: string) {
     super(message)
@@ -5,6 +6,7 @@ export class AmountBelowMinError extends Error {
   }
 }
 
+/** Thrown when the available UTXOs/balance can't cover the requested amount plus fees. */
 export class NotEnoughFundsError extends Error {
   constructor(message?: string) {
     super(message)
@@ -12,6 +14,7 @@ export class NotEnoughFundsError extends Error {
   }
 }
 
+/** Thrown when the 2WP API responds with an error, a failed request, or an unexpected failure. */
 export class APIError extends Error {
   readonly statusCode?: number
   readonly data?: unknown
@@ -24,6 +27,7 @@ export class APIError extends Error {
   }
 }
 
+/** Thrown when one or more Bitcoin addresses don't belong to the SDK's configured network. */
 export class InvalidAddressError extends Error {
   readonly invalidAddresses: string[]
 
