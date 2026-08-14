@@ -40,6 +40,7 @@ const mockProvider = createMockProvider()
 
 const mockApiService = {
   getTransactionStatus: vi.fn(),
+  getFeatures: vi.fn(),
 }
 
 vi.mock('../api/api', async () => {
@@ -137,6 +138,19 @@ describe('sdk', () => {
 
     expect(fees.bitcoinFee).toBe(15_166n)
     expect(fees.rootstockFee).toBe(300_006_150_000n)
+  })
+
+  describe('getFeatures', () => {
+    it('should return the features from the API', async () => {
+      const features = [
+        { name: 'flyover', value: 'enabled' },
+        { name: 'union_bridge', value: 'disabled' },
+        { name: 'powpeg', value: 'enabled' },
+      ]
+      mockApiService.getFeatures.mockResolvedValue(features)
+
+      await expect(sdk.getFeatures()).resolves.toEqual(features)
+    })
   })
 
   describe('getTransactionStatus', () => {

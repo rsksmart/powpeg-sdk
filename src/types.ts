@@ -46,6 +46,25 @@ export interface PegoutFeeEstimation {
   rootstockFee: bigint
 }
 
+/** Browser support flags for a feature, as reported by the 2WP API. */
+export interface SupportedBrowsers {
+  chrome: boolean
+  firefox: boolean
+  safari: boolean
+  edge: boolean
+  brave: boolean
+  chromium: boolean
+  opera: boolean
+}
+
+/** A feature flag entry returned by the 2WP API `/features` endpoint. */
+export interface Feature {
+  name: string
+  value: string
+  version: number
+  supportedBrowsers?: SupportedBrowsers
+}
+
 /** Distinguishes a peg-in (BTC -> RBTC) from a peg-out (RBTC -> BTC) transaction. */
 export enum TxType {
   PEGIN = 'PEGIN',

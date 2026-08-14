@@ -51,4 +51,32 @@ describe('ApiService', () => {
 
     await expect(apiService.getFeeRate('fast')).rejects.toThrow(APIError)
   })
+
+  describe('getFeatures', () => {
+    const feature = (name: string, value: string) => ({
+      name,
+      value,
+      version: 1,
+    })
+
+    it('should return the features exposed by the API', async () => {
+      const features = [
+        feature('flyover', 'enabled'),
+        feature('union_bridge', 'disabled'),
+        feature('powpeg', 'enabled'),
+        feature('new_provider', 'enabled'),
+      ]
+      mockGet.mockResolvedValue({ data: features })
+
+      await expect(apiService.getFeatures()).resolves.toEqual(features)
+      expect(mockGet).toHaveBeenCalledWith('/features')
+    })
+
+    it('should throw API Error when the request fails', async () => {
+      mockIsAxiosError.mockReturnValue(true)
+      mockGet.mockRejectedValue({ request: {} })
+
+      await expect(apiService.getFeatures()).rejects.toThrow(APIError)
+    })
+  })
 })

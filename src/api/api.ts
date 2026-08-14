@@ -1,6 +1,6 @@
 import axios, { type AxiosInstance } from 'axios'
 import { TxType } from '../types'
-import type { BitcoinDataSource, FeeLevel, Utxo, AddressWithDetails, StatusData } from '../types'
+import type { BitcoinDataSource, FeeLevel, Utxo, AddressWithDetails, StatusData, Feature } from '../types'
 import { type Network } from '../constants'
 import { APIError } from '../errors'
 import { ethers } from '@rsksmart/bridges-core-sdk'
@@ -91,6 +91,11 @@ export class ApiService implements BitcoinDataSource {
 
   async getTransactionStatus<T extends TxType>(txHash: string, txType: T): Promise<Extract<StatusData, { type: T }>> {
     const response = await this.api.get(`/tx-status-by-type/${txHash}/${txType}`).catch(this.handleError)
+    return response.data
+  }
+
+  async getFeatures(): Promise<Feature[]> {
+    const response = await this.api.get<Feature[]>('/features').catch(this.handleError)
     return response.data
   }
 }
