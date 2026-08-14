@@ -2,14 +2,15 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { ApiService } from './api'
 import { APIError } from '../errors'
 
-const { mockGet, mockIsAxiosError } = vi.hoisted(() => ({
+const { mockGet, mockPost, mockIsAxiosError } = vi.hoisted(() => ({
   mockGet: vi.fn(),
+  mockPost: vi.fn(),
   mockIsAxiosError: vi.fn(),
 }))
 
 vi.mock('axios', () => ({
   default: {
-    create: () => ({ get: mockGet }),
+    create: () => ({ get: mockGet, post: mockPost }),
     isAxiosError: mockIsAxiosError,
   },
 }))
@@ -50,6 +51,46 @@ describe('ApiService', () => {
     mockGet.mockRejectedValue('Unknown error')
 
     await expect(apiService.getFeeRate('fast')).rejects.toThrow(APIError)
+  })
+
+  describe('getOutputs', () => {
+    it('should return the queried address on each UTXO regardless of the address in the response', async () => {
+      const queriedAddress = 'tb1qm0f4nu37q8u82txpj0l0cp924836gs2q4m9rdf'
+      const responseAddress = 'tb1qattacker0000000000000000000000000000000'
+      mockPost.mockResolvedValue({
+        data: {
+          data: [
+            { address: responseAddress, txid: 'tx1', vout: 0, amount: '0.01', satoshis: 1_000_000, height: 1, confirmations: 6 },
+            { address: responseAddress, txid: 'tx2', vout: 1, amount: '0.02', satoshis: 2_000_000, height: 1, confirmations: 6 },
+          ],
+        },
+      })
+
+      const utxos = await apiService.getOutputs(queriedAddress)
+
+      expect(utxos).toHaveLength(2)
+      utxos.forEach((utxo) => expect(utxo.address).toBe(queriedAddress))
+      expect(mockPost).toHaveBeenCalledWith('/utxo', { addressList: [queriedAddress] })
+    })
+  })
+
+  describe('getAddressDetails', () => {
+    it('should return the queried address regardless of the address in the response', async () => {
+      const queriedAddress = 'tb1qm0f4nu37q8u82txpj0l0cp924836gs2q4m9rdf'
+      const responseAddress = 'tb1qattacker0000000000000000000000000000000'
+      mockPost.mockResolvedValue({
+        data: {
+          addressesInfo: [{ address: responseAddress, balance: 1_000_000, txs: 3 }],
+        },
+      })
+
+      const details = await apiService.getAddressDetails(queriedAddress)
+
+      expect(details.address).toBe(queriedAddress)
+      expect(details.balance).toBe(1_000_000)
+      expect(details.txCount).toBe(3)
+      expect(mockPost).toHaveBeenCalledWith('/addresses-info', { addressList: [queriedAddress] })
+    })
   })
 
   describe('getFeatures', () => {

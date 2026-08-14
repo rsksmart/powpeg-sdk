@@ -120,6 +120,22 @@ export class LedgerSigner implements BitcoinSigner {
     })
   }
 
+  private isChangePath(path: string) {
+    const segments = path.split('/')
+    return segments.length === 6 && segments[4] === '1'
+  }
+
+  private getChangePath(psbt: Psbt): string | undefined {
+    for (const output of psbt.txOutputs) {
+      if (!output.address) continue
+      const path = this.addresses.get(output.address)
+      if (path && this.isChangePath(path)) {
+        return path
+      }
+    }
+    return undefined
+  }
+
   getOutputScriptHex(psbt: Psbt) {
     const outputs = psbt.txOutputs.map((output) => {
       const amount = Buffer.alloc(8)
@@ -146,10 +162,14 @@ export class LedgerSigner implements BitcoinSigner {
       const ledgerInputs = this.getInputs(inputs, transactions)
       const paths = inputs.map((input) => this.addresses.get(input.address)).filter((item): item is string => !!item)
       const outputScriptHex = this.getOutputScriptHex(psbt)
+      const changePath = this.getChangePath(psbt)
       return this.connection.createPaymentTransaction({
         inputs: ledgerInputs,
         associatedKeysets: paths,
         outputScriptHex,
+        // hw-app-btc throws if changePath matches no output, so omit it
+        // when the transaction has no device-derived change output
+        ...(changePath ? { changePath } : {}),
         segwit: this.isSegwit(),
         useTrustedInputForSegwit: this.isSegwit(),
         additionals: this.getAddressFormat() === 'bech32' ? ['bech32'] : [],

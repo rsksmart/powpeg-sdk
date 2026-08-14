@@ -66,7 +66,7 @@ export class ApiService implements BitcoinDataSource {
   async getOutputs(address: string): Promise<Utxo[]> {
     const response = await this.api.post<UtxoResponse2WP>('/utxo', { addressList: [address] }).catch(this.handleError)
     const { data: utxos } = response.data
-    return utxos.map(({ address, txid, vout, satoshis }) => ({
+    return utxos.map(({ txid, vout, satoshis }) => ({
       address,
       txid,
       amount: BigInt(satoshis),
@@ -78,7 +78,7 @@ export class ApiService implements BitcoinDataSource {
     const response = await this.api.post('/addresses-info', { addressList: [address] }).catch(this.handleError)
     const [details] = response.data.addressesInfo
     return {
-      address: details.address,
+      address,
       balance: details.balance,
       txCount: details.txs,
     }

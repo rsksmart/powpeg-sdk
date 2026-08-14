@@ -110,6 +110,22 @@ export class TrezorSigner implements BitcoinSigner {
     })
   }
 
+  private getOutputScriptType(address: string): 'PAYTOADDRESS' | 'PAYTOP2SHWITNESS' | 'PAYTOWITNESS' {
+    const addressType = getAddressType(address, this.network)
+    switch (addressType) {
+      case 'SEGWIT':
+        return 'PAYTOP2SHWITNESS'
+      case 'NATIVE SEGWIT':
+        return 'PAYTOWITNESS'
+      default:
+        return 'PAYTOADDRESS'
+    }
+  }
+
+  private isChangePath(path: number[]) {
+    return path.length === 5 && path[3] === 1
+  }
+
   private getOutputs(psbt: Psbt): PROTO.TxOutputType[] {
     return psbt.txOutputs.map((output) => {
       if (output.value === 0 && !output.address) {
@@ -117,6 +133,16 @@ export class TrezorSigner implements BitcoinSigner {
           amount: output.value,
           op_return_data: output.script.toString('hex').slice(4),
           script_type: 'PAYTOOPRETURN',
+        }
+      }
+      const path = output.address ? this.addresses.get(output.address) : undefined
+      // Only change outputs are marked as internal (address_n); receive
+      // addresses stay as regular outputs so the device displays them.
+      if (output.address && path && this.isChangePath(path)) {
+        return {
+          address_n: path,
+          script_type: this.getOutputScriptType(output.address),
+          amount: output.value,
         }
       }
       return {
