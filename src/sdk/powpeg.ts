@@ -134,8 +134,18 @@ export class PowPegSDK {
     }
   }
 
+  private validateRskRecipient(recipientAddress: string): string {
+    // Rootstock uses EIP-1191 (RSKIP-60) checksums, so EIP-55 validators
+    // such as ethers.utils.isAddress reject valid Rootstock addresses.
+    const trimmed = recipientAddress.trim()
+    if (!/^(0x)?[0-9a-fA-F]{40}$/.test(trimmed)) {
+      throw new sdkErrors.InvalidAddressError([recipientAddress], `Invalid Rootstock recipient: ${recipientAddress}`)
+    }
+    return trimmed.toLowerCase()
+  }
+
   private getRskOutput(recipientAddress: string, refundAddress?: string) {
-    let output = `${this.powpegRsktHeader}${remove0x(recipientAddress)}`
+    let output = `${this.powpegRsktHeader}${remove0x(this.validateRskRecipient(recipientAddress))}`
     if (refundAddress) {
       const refundAddressType = getAddressType(refundAddress, this.network)
       const prefixes = {
@@ -252,6 +262,8 @@ export class PowPegSDK {
     const { inputs, change, totalFee } = await this.calculateFeeAndSelectedInputs(amount, this.utxos, feeRate)
     if (change > Math.min(this.burnDustValue, this.burnDustMaxValue)) {
       psbt.addOutput({
+        // Fall back to the first funding input's address when every derived
+        // change address has already been used.
         address: this.changeAddress ?? inputs[0].address,
         value: change,
       })

@@ -378,6 +378,42 @@ describe('sdk', () => {
     })
   })
 
+  describe('RSK recipient validation', () => {
+    const validRecipients = [
+      // EIP-55 checksum (what ethers accepts)
+      '0x8C2f0AbF2B1c4d4f7f5B6e3c3F2a6B7F7c7C1D9d',
+      // EIP-1191 chainId 30 (RSK mainnet)
+      '0x8c2f0AbF2B1C4d4f7F5b6e3C3F2A6B7F7c7c1d9d',
+      // EIP-1191 chainId 31 (RSK testnet)
+      '0x8c2f0abF2b1C4D4f7F5b6e3c3F2a6B7f7c7c1d9d',
+      // all-lowercase, and without 0x prefix
+      '0x8c2f0abf2b1c4d4f7f5b6e3c3f2a6b7f7c7c1d9d',
+      '8c2f0abf2b1c4d4f7f5b6e3c3f2a6b7f7c7c1d9d',
+    ]
+
+    const invalidRecipients = [
+      '0x8c2f0abf2b1c4d4f7f5b6e3c3f2a6b7f7c7c1d9', // 39 hex chars (truncated)
+      '0x8c2f0abf2b1c4d4f7f5b6e3c3f2a6b7f7c7c1d9dd', // 41 hex chars
+      '0x8c2f0abf2b1c4d4f7f5b6e3c3f2a6b7f7c7cZZZZ', // non-hex characters
+      'XE38GDI18R1Q9VVZ9YX48FQ1HBYPCUM2W7X', // ICAP/IBAN form accepted by ethers isAddress
+      'tb1qm0f4nu37q8u82txpj0l0cp924836gs2q4m9rdf', // Bitcoin address pasted by mistake
+      '',
+    ]
+
+    it.each(validRecipients)('should accept valid recipient %s and encode the full 20-byte recipient', async (recipient) => {
+      const psbt = await sdk.createPegin(500_000n, recipient)
+
+      // payload starts with the 5-byte protocol header followed by the 20-byte
+      // recipient (a refund entry may follow, making the payload 46 bytes)
+      const scriptHex = psbt.txOutputs[0].script.toString('hex')
+      expect(scriptHex).toContain(`52534b5401${recipient.toLowerCase().replace(/^0x/, '')}`)
+    })
+
+    it.each(invalidRecipients)('should reject invalid recipient %s', async (recipient) => {
+      await expect(sdk.createPegin(500_000n, recipient)).rejects.toThrowError(InvalidAddressError)
+    })
+  })
+
   describe('UTXO deduplication', () => {
     beforeEach(() => {
       vi.clearAllMocks()
