@@ -164,10 +164,16 @@ export class PowPegSDK {
    * Estimates the Bitcoin network fee (in satoshis) to pay for a peg-in transaction of the given amount.
    * @param {bigint} amount - Amount to peg in, in satoshis.
    * @param {FeeLevel} feeLevel - Fee priority level used to look up the current network fee rate. Defaults to `'fast'`.
+   * @param {Utxo[]} [utxos] - UTXOs available to fund the peg-in. When provided, the estimate runs the
+   * same input selection used to fund the transaction; otherwise it assumes a fixed number of inputs.
    * @returns {Promise<number>} The estimated total fee in satoshis.
    */
-  async estimatePeginFee(amount: bigint, feeLevel: FeeLevel = 'fast') {
+  async estimatePeginFee(amount: bigint, feeLevel: FeeLevel = 'fast', utxos?: Utxo[]) {
     const feeRate = await this.bitcoinDataSource.getFeeRate(feeLevel)
+    if (utxos) {
+      const { totalFee } = await this.calculateFeeAndSelectedInputs(amount, utxos, feeRate)
+      return totalFee
+    }
     const { baseFee, feePerInput } = await this.calculatePeginFee(amount, feeRate)
     const totalFee = baseFee + feePerInput * this.peginFeeEstimationInputs
     return totalFee
@@ -214,13 +220,17 @@ export class PowPegSDK {
   private selectInputs(amount: bigint, utxos: Utxo[], baseFee: number, feePerInput: number) {
     const inputs: Utxo[] = []
     let remainingSatoshisToBePaid = BigInt(amount) + BigInt(baseFee)
-    utxos.sort((a, b) => a.amount < b.amount ? -1 : a.amount > b.amount ? 1 : 0)
-    utxos.forEach((utxo) => {
-      if (remainingSatoshisToBePaid > 0) {
-        inputs.push(utxo)
-        remainingSatoshisToBePaid = remainingSatoshisToBePaid + BigInt(feePerInput) - BigInt(utxo.amount)
+    const candidates = [...utxos].sort((a, b) => a.amount < b.amount ? 1 : a.amount > b.amount ? -1 : 0)
+    for (const utxo of candidates) {
+      if (remainingSatoshisToBePaid <= 0) {
+        break
       }
-    })
+      if (BigInt(utxo.amount) <= BigInt(feePerInput)) {
+        continue
+      }
+      inputs.push(utxo)
+      remainingSatoshisToBePaid = remainingSatoshisToBePaid + BigInt(feePerInput) - BigInt(utxo.amount)
+    }
     return { inputs, rest: Number(remainingSatoshisToBePaid) }
   }
 

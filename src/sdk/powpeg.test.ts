@@ -378,6 +378,67 @@ describe('sdk', () => {
     })
   })
 
+  describe('coin selection', () => {
+    const feePerInput = 290 // 2 sat/B * 145 bytes
+    const baseFee = 218
+
+    const utxo = (amount: bigint, i: number) => ({
+      address: btcAddresses[0],
+      txid: `tx${i}`,
+      vout: 0,
+      amount,
+    })
+
+    it('should prefer a single large UTXO over many small ones', () => {
+      const utxos = [...Array.from({ length: 40 }, (_, i) => utxo(40_000n, i)), utxo(5_000_000n, 40)]
+
+      const { inputs, rest } = sdk['selectInputs'](500_000n, utxos, baseFee, feePerInput)
+
+      expect(inputs).toHaveLength(1)
+      expect(inputs[0].amount).toBe(5_000_000n)
+      expect(rest).toBeLessThanOrEqual(0)
+    })
+
+    it('should skip UTXOs worth less than their own input fee', () => {
+      const utxos = Array.from({ length: 60 }, (_, i) => utxo(200n, i))
+
+      const { inputs, rest } = sdk['selectInputs'](500_000n, utxos, baseFee, feePerInput)
+
+      expect(inputs).toHaveLength(0)
+      expect(rest).toBeGreaterThan(0)
+    })
+
+    it('should stop selecting once the target is covered', () => {
+      const utxos = [utxo(600_000n, 0), utxo(550_000n, 1), utxo(500_000n, 2)]
+
+      const { inputs } = sdk['selectInputs'](500_000n, utxos, baseFee, feePerInput)
+
+      expect(inputs).toHaveLength(1)
+      expect(inputs[0].amount).toBe(600_000n)
+    })
+
+    it('should not mutate the caller\'s UTXO array', () => {
+      const utxos = [utxo(40_000n, 0), utxo(5_000_000n, 1), utxo(100_000n, 2)]
+      const originalOrder = utxos.map((u) => u.txid)
+
+      sdk['selectInputs'](500_000n, utxos, baseFee, feePerInput)
+
+      expect(utxos.map((u) => u.txid)).toEqual(originalOrder)
+    })
+
+    it('should estimate the fee with the same selection used to fund when UTXOs are provided', async () => {
+      const utxos = [...Array.from({ length: 40 }, (_, i) => utxo(40_000n, i)), utxo(5_000_000n, 40)]
+
+      const estimatedFee = await sdk.estimatePeginFee(500_000n, 'fast', utxos)
+      const feeRate = mockValues.bitcoinFeeRate
+      const expectedBaseFee = feeRate * (13 + 32 * 3)
+      const expectedFeePerInput = feeRate * 145
+
+      // one input selected, so the estimate reflects exactly one input's cost
+      expect(estimatedFee).toBe(expectedBaseFee + expectedFeePerInput)
+    })
+  })
+
   describe('RSK recipient validation', () => {
     const validRecipients = [
       // EIP-55 checksum (what ethers accepts)
