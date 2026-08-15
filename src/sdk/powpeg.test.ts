@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { Psbt } from 'bitcoinjs-lib'
 import { PowPegSDK } from './powpeg'
 import type { BitcoinSigner, BitcoinDataSource } from '../types'
 import { AmountBelowMinError, NotEnoughFundsError, InvalidAddressError, FederationAddressError } from '../errors'
@@ -381,6 +382,47 @@ describe('sdk', () => {
       expect(result.inputs.length).toBeGreaterThan(0)
       expect(result.fee).toBeGreaterThan(0)
       expect(result.transactions).toBeDefined()
+    })
+  })
+
+  describe('funding context isolation', () => {
+    const txHex = '0200000001a2399abede23d11581f898eaa3b900b5fe09b8e7366bfb362e42173123fdb188000000006b483045022100836f7eb5a993d86fab93397c3cbd000b5d05fccbfa0921e5e3262b810f0085f00220123a465b2abfb73a6d555087312482b8292c5d170e087244b1130084b1be623c0121033b0017bbeced25a65c3f4e18ac49183fbbef9a2c8215a6f48ca59809cd7fd085ffffffff02af195203000000001976a9141f36d1d36d0bf2d279311db70c5b17faca75e0bb88ac0000000000000000536a4c5048454d4901007084170022b6d196534385ea12387b7e0bcfe929911662add4acf95b048323eb3c0dc549f6f233c90333424e8250a29d4f23eb51b6b0a9d01f11b067b0419aa8ad235794fc699814950d1a063a00'
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      mockedDataSource.getTxHex.mockResolvedValue(txHex)
+    })
+
+    it('should fund each PSBT with its own UTXOs when peg-ins are created interleaved', async () => {
+      const utxoA = { address: btcAddresses[1], txid: 'a'.repeat(64), vout: 0, amount: 2_000_000n }
+      const utxoB = { address: btcAddresses[2], txid: 'b'.repeat(64), vout: 0, amount: 2_000_000n }
+
+      const psbtA = await sdk.createPegin(500_000n, rskAddresses[0], [utxoA])
+      const psbtB = await sdk.createPegin(500_000n, rskAddresses[0], [utxoB])
+
+      const fundedA = await sdk.fundPegin(psbtA, 'average')
+      const fundedB = await sdk.fundPegin(psbtB, 'average')
+
+      expect(fundedA.inputs).toHaveLength(1)
+      expect(fundedA.inputs[0].txid).toBe(utxoA.txid)
+      expect(fundedB.inputs).toHaveLength(1)
+      expect(fundedB.inputs[0].txid).toBe(utxoB.txid)
+    })
+
+    it('should not reuse a previous peg-in change address in createAndFundPsbt', async () => {
+      const previousPeginUtxo = { address: btcAddresses[1], txid: 'a'.repeat(64), vout: 0, amount: 2_000_000n }
+      await sdk.createPegin(500_000n, rskAddresses[0], [previousPeginUtxo])
+
+      const psbtUtxo = { address: btcAddresses[4], txid: 'b'.repeat(64), vout: 0, amount: 2_000_000n }
+      const { psbt } = await sdk.createAndFundPsbt(500_000n, btcAddresses[3], [psbtUtxo], 'average')
+
+      const changeOutput = psbt.txOutputs[1]
+      expect(changeOutput.address).toBe(psbtUtxo.address)
+      expect(changeOutput.address).not.toBe(btcAddresses[0])
+    })
+
+    it('should fail to fund a PSBT that has no funding context', async () => {
+      await expect(sdk.fundPegin(new Psbt(), 'average')).rejects.toThrow('No funding context')
     })
   })
 

@@ -18,8 +18,7 @@ export class PowPegSDK {
   private pegInOutputs = 3
   private powpegRsktHeader = '52534b5401'
   private burnDustMaxValue = 30_000
-  private utxos: Utxo[] = []
-  private changeAddress?: string
+  private funding = new WeakMap<Psbt, { utxos: Utxo[], changeAddress?: string }>()
   private minPeginAmount = 500_000n
   private peginFeeEstimationInputs = 2
   private minPegoutAmount = '0.004'
@@ -218,15 +217,16 @@ export class PowPegSDK {
       address: bridgeAddress,
       value: Number(amount),
     })
+    let utxos: Utxo[]
     if (selectedUtxos) {
-      this.utxos = selectedUtxos
+      utxos = [...selectedUtxos]
     }
     else {
       const usedAddresses = addresses.nonChange.used.concat(addresses.change.used)
       const { withBalance } = this.groupAddressesByBalance(usedAddresses)
-      this.utxos = await this.getUtxos(withBalance)
+      utxos = await this.getUtxos(withBalance)
     }
-    this.changeAddress = addresses.change.unused[0]?.address
+    this.funding.set(psbt, { utxos, changeAddress: addresses.change.unused[0]?.address })
 
     return psbt
   }
@@ -281,14 +281,16 @@ export class PowPegSDK {
    * @returns {Promise<UnsignedPegin>} The funded PSBT along with its inputs, their raw transactions, and the total fee.
    */
   async fundPegin(psbt: Psbt, feeLevel: FeeLevel = 'fast', value?: bigint) {
+    const funding = this.funding.get(psbt)
+    assertTruthy(funding, 'No funding context found for this PSBT. Create it with createPegin or createAndFundPsbt first.')
     const amount = value ?? BigInt(psbt.txOutputs[1].value)
     const feeRate = await this.bitcoinDataSource.getFeeRate(feeLevel)
-    const { inputs, change, totalFee } = await this.calculateFeeAndSelectedInputs(amount, this.utxos, feeRate)
+    const { inputs, change, totalFee } = await this.calculateFeeAndSelectedInputs(amount, funding.utxos, feeRate)
     if (change > Math.min(this.burnDustValue, this.burnDustMaxValue)) {
       psbt.addOutput({
         // Fall back to the first funding input's address when every derived
         // change address has already been used.
-        address: this.changeAddress ?? inputs[0].address,
+        address: funding.changeAddress ?? inputs[0].address,
         value: change,
       })
     }
@@ -338,7 +340,7 @@ export class PowPegSDK {
       address: recipientAddress,
       value: Number(amount),
     })
-    this.utxos = utxos
+    this.funding.set(psbt, { utxos: [...utxos] })
     return this.fundPegin(psbt, feeLevel, amount)
   }
 
