@@ -93,6 +93,28 @@ describe('ApiService', () => {
     })
   })
 
+  describe('getPeginConfiguration', () => {
+    it('should return the pegin configuration from the API', async () => {
+      const configuration = {
+        minValue: 500_000,
+        maxValue: 4_199_866_190_155_915,
+        federationAddress: '3GX89qzyQVaJqUJjq5noZbLJEHuYDvVrHq',
+        btcConfirmations: 100,
+      }
+      mockGet.mockResolvedValue({ data: configuration })
+
+      await expect(apiService.getPeginConfiguration()).resolves.toEqual(configuration)
+      expect(mockGet).toHaveBeenCalledWith('/pegin-configuration')
+    })
+
+    it('should throw API Error when the request fails', async () => {
+      mockIsAxiosError.mockReturnValue(true)
+      mockGet.mockRejectedValue({ request: {} })
+
+      await expect(apiService.getPeginConfiguration()).rejects.toThrow(APIError)
+    })
+  })
+
   describe('getFeatures', () => {
     const feature = (name: string, value: string) => ({
       name,

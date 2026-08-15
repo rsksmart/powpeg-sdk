@@ -94,6 +94,11 @@ export class ApiService implements BitcoinDataSource {
     return response.data
   }
 
+  async getPeginConfiguration(): Promise<{ minValue: number, maxValue: number, federationAddress: string, btcConfirmations: number }> {
+    const response = await this.api.get('/pegin-configuration').catch(this.handleError)
+    return response.data
+  }
+
   async getFeatures(): Promise<Feature[]> {
     const response = await this.api.get<Feature[]>('/features').catch(this.handleError)
     return response.data

@@ -144,6 +144,20 @@ export class PowPegSDK {
     return trimmed.toLowerCase()
   }
 
+  private async getVerifiedFederationAddress(): Promise<string> {
+    const [bridgeAddress, peginConfiguration] = await Promise.all([
+      this.bridge.getFederationAddress(),
+      this.api.getPeginConfiguration().catch((error: unknown) => {
+        const reason = error instanceof Error ? error.message : String(error)
+        throw new sdkErrors.FederationAddressError(`Could not retrieve the pegin configuration: ${reason}`)
+      }),
+    ])
+    if (peginConfiguration.federationAddress !== bridgeAddress) {
+      throw new sdkErrors.FederationAddressError('Federation address mismatch between the Bridge contract and the pegin configuration.')
+    }
+    return bridgeAddress
+  }
+
   private getRskOutput(recipientAddress: string, refundAddress?: string) {
     let output = `${this.powpegRsktHeader}${remove0x(this.validateRskRecipient(recipientAddress))}`
     if (refundAddress) {
@@ -199,7 +213,7 @@ export class PowPegSDK {
         value: 0,
       })
     }
-    const bridgeAddress = await this.bridge.getFederationAddress()
+    const bridgeAddress = await this.getVerifiedFederationAddress()
     psbt.addOutput({
       address: bridgeAddress,
       value: Number(amount),

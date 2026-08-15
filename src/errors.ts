@@ -27,6 +27,14 @@ export class APIError extends Error {
   }
 }
 
+/** Thrown when the federation address can't be retrieved from the pegin configuration endpoint or doesn't match the Bridge contract's value. */
+export class FederationAddressError extends Error {
+  constructor(message?: string) {
+    super(message)
+    this.name = 'FederationAddressError'
+  }
+}
+
 /** Thrown when one or more Bitcoin addresses don't belong to the SDK's configured network. */
 export class InvalidAddressError extends Error {
   readonly invalidAddresses: string[]

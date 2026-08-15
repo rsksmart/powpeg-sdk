@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { PowPegSDK } from './powpeg'
 import type { BitcoinSigner, BitcoinDataSource } from '../types'
-import { AmountBelowMinError, NotEnoughFundsError, InvalidAddressError } from '../errors'
+import { AmountBelowMinError, NotEnoughFundsError, InvalidAddressError, FederationAddressError } from '../errors'
 import { ethers } from '@rsksmart/bridges-core-sdk'
 import { TxType, PegoutStatuses, PeginStatuses } from '../types'
 
@@ -41,6 +41,12 @@ const mockProvider = createMockProvider()
 const mockApiService = {
   getTransactionStatus: vi.fn(),
   getFeatures: vi.fn(),
+  getPeginConfiguration: vi.fn().mockResolvedValue({
+    minValue: 500_000,
+    maxValue: 4_199_866_190_155_915,
+    federationAddress: '2MskK2P1Qw9QbeZ6MG5jmeWMX2d4MFANgkD',
+    btcConfirmations: 100,
+  }),
 }
 
 vi.mock('../api/api', async () => {
@@ -375,6 +381,25 @@ describe('sdk', () => {
       expect(result.inputs.length).toBeGreaterThan(0)
       expect(result.fee).toBeGreaterThan(0)
       expect(result.transactions).toBeDefined()
+    })
+  })
+
+  describe('federation address verification', () => {
+    it('should fail to create a peg-in when the pegin configuration reports a different federation address', async () => {
+      mockApiService.getPeginConfiguration.mockResolvedValueOnce({
+        minValue: 500_000,
+        maxValue: 4_199_866_190_155_915,
+        federationAddress: '2N7eSt5myGSXoiAnqpzu856EwgA8SHg53Lg',
+        btcConfirmations: 100,
+      })
+
+      await expect(sdk.createPegin(500_000n, rskAddresses[0])).rejects.toThrowError(FederationAddressError)
+    })
+
+    it('should fail to create a peg-in when the pegin configuration is unavailable', async () => {
+      mockApiService.getPeginConfiguration.mockRejectedValueOnce(new Error('Not found'))
+
+      await expect(sdk.createPegin(500_000n, rskAddresses[0])).rejects.toThrowError(FederationAddressError)
     })
   })
 
