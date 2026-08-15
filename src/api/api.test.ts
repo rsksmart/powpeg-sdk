@@ -53,6 +53,38 @@ describe('ApiService', () => {
     await expect(apiService.getFeeRate('fast')).rejects.toThrow(APIError)
   })
 
+  describe('getFeeRate', () => {
+    it('should round fractional rates up instead of truncating', async () => {
+      mockGet.mockResolvedValue({ data: { amount: '0.00001249' } }) // 1.249 sat/B
+
+      await expect(apiService.getFeeRate('fast')).resolves.toBe(2)
+    })
+
+    it('should never return a zero rate for a small positive input', async () => {
+      mockGet.mockResolvedValue({ data: { amount: '0.00000999' } }) // 0.999 sat/B
+
+      await expect(apiService.getFeeRate('fast')).resolves.toBe(1)
+    })
+
+    it('should return whole rates unchanged', async () => {
+      mockGet.mockResolvedValue({ data: { amount: '0.00002000' } }) // 2 sat/B
+
+      await expect(apiService.getFeeRate('fast')).resolves.toBe(2)
+    })
+
+    it.each(['0', '-0.00001', 'not-a-number', ''])('should throw APIError for invalid rate %s', async (amount) => {
+      mockGet.mockResolvedValue({ data: { amount } })
+
+      await expect(apiService.getFeeRate('fast')).rejects.toThrow(APIError)
+    })
+
+    it('should throw APIError for an implausibly high rate', async () => {
+      mockGet.mockResolvedValue({ data: { amount: '10' } }) // 1,000,000 sat/B
+
+      await expect(apiService.getFeeRate('fast')).rejects.toThrow(APIError)
+    })
+  })
+
   describe('getOutputs', () => {
     it('should return the queried address on each UTXO regardless of the address in the response', async () => {
       const queriedAddress = 'tb1qm0f4nu37q8u82txpj0l0cp924836gs2q4m9rdf'

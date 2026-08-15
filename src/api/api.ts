@@ -22,6 +22,7 @@ export class ApiService implements BitcoinDataSource {
     MAIN: 'https://api.2wp.rootstock.io',
     TEST: 'https://api.2wp.testnet.rootstock.io',
   }
+  private readonly maxFeeRateSatPerByte = 1000
   private feeLevelBlocks = {
     slow: 5,
     average: 3,
@@ -53,9 +54,21 @@ export class ApiService implements BitcoinDataSource {
   async getFeeRate(level: FeeLevel): Promise<number> {
     const blocks = this.feeLevelBlocks[level]
     const response = await this.api.get(`/estimate-fee/${blocks}`).catch(this.handleError)
-    // BTC/kB -> sat/B
-    const rate = ethers.utils.parseUnits(response.data.amount, 8).div(1000).toNumber()
-    return rate
+    let satoshisPerKb: ethers.BigNumber
+    try {
+      satoshisPerKb = ethers.utils.parseUnits(String(response.data.amount), 8)
+    }
+    catch {
+      throw new APIError(`Invalid fee rate received: ${response.data.amount}`)
+    }
+    if (satoshisPerKb.lte(0)) {
+      throw new APIError(`Invalid fee rate received: ${response.data.amount}`)
+    }
+    if (satoshisPerKb.gt(this.maxFeeRateSatPerByte * 1000)) {
+      throw new APIError(`Fee rate out of bounds: ${response.data.amount}`)
+    }
+    // BTC/kB -> sat/B, rounded up
+    return satoshisPerKb.add(999).div(1000).toNumber()
   }
 
   async getTxHex(txId: string): Promise<string> {
