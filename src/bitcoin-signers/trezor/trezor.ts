@@ -127,7 +127,8 @@ export class TrezorSigner implements BitcoinSigner {
   }
 
   private getOutputs(psbt: Psbt): PROTO.TxOutputType[] {
-    return psbt.txOutputs.map((output) => {
+    const lastIndex = psbt.txOutputs.length - 1
+    return psbt.txOutputs.map((output, index) => {
       if (output.value === 0 && !output.address) {
         return {
           amount: output.value,
@@ -136,9 +137,9 @@ export class TrezorSigner implements BitcoinSigner {
         }
       }
       const path = output.address ? this.addresses.get(output.address) : undefined
-      // Only change outputs are marked as internal (address_n); receive
-      // addresses stay as regular outputs so the device displays them.
-      if (output.address && path && this.isChangePath(path)) {
+      // Only the final change output is marked as internal (address_n); all
+      // other outputs stay regular so the device displays them.
+      if (index === lastIndex && index > 0 && output.address && path && this.isChangePath(path)) {
         return {
           address_n: path,
           script_type: this.getOutputScriptType(output.address),

@@ -126,14 +126,15 @@ export class LedgerSigner implements BitcoinSigner {
   }
 
   private getChangePath(psbt: Psbt): string | undefined {
-    for (const output of psbt.txOutputs) {
-      if (!output.address) continue
-      const path = this.addresses.get(output.address)
-      if (path && this.isChangePath(path)) {
-        return path
-      }
+    if (psbt.txOutputs.length < 2) {
+      return undefined
     }
-    return undefined
+    const lastOutput = psbt.txOutputs[psbt.txOutputs.length - 1]
+    if (!lastOutput.address) {
+      return undefined
+    }
+    const path = this.addresses.get(lastOutput.address)
+    return path && this.isChangePath(path) ? path : undefined
   }
 
   getOutputScriptHex(psbt: Psbt) {
