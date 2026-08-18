@@ -145,7 +145,10 @@ export class PowPegSDK {
 
   private async getVerifiedFederationAddress(): Promise<string> {
     const [bridgeAddress, peginConfiguration] = await Promise.all([
-      this.bridge.getFederationAddress(),
+      this.bridge.getFederationAddress().catch((error: unknown) => {
+        const reason = error instanceof Error ? error.message : String(error)
+        throw new sdkErrors.FederationAddressError(`Could not retrieve the federation address from the Bridge contract: ${reason}`)
+      }),
       this.api.getPeginConfiguration().catch((error: unknown) => {
         const reason = error instanceof Error ? error.message : String(error)
         throw new sdkErrors.FederationAddressError(`Could not retrieve the pegin configuration: ${reason}`)
@@ -234,7 +237,7 @@ export class PowPegSDK {
   private selectInputs(amount: bigint, utxos: Utxo[], baseFee: number, feePerInput: number) {
     const inputs: Utxo[] = []
     let remainingSatoshisToBePaid = BigInt(amount) + BigInt(baseFee)
-    const candidates = [...utxos].sort((a, b) => a.amount < b.amount ? 1 : a.amount > b.amount ? -1 : 0)
+    const candidates = [...utxos].sort((a, b) => Number(b.amount - a.amount))
     for (const utxo of candidates) {
       if (remainingSatoshisToBePaid <= 0) {
         break
