@@ -424,6 +424,29 @@ describe('sdk', () => {
     it('should fail to fund a PSBT that has no funding context', async () => {
       await expect(sdk.fundPegin(new Psbt(), 'average')).rejects.toThrow('No funding context')
     })
+
+    it('should fail to fund the same PSBT twice', async () => {
+      const utxo = { address: btcAddresses[1], txid: 'a'.repeat(64), vout: 0, amount: 2_000_000n }
+      const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [utxo])
+
+      await expect(sdk.fundPegin(psbt, 'average')).resolves.toBeDefined()
+      await expect(sdk.fundPegin(psbt, 'average')).rejects.toThrow('No funding context')
+    })
+
+    it('should leave the PSBT unmodified when funding fails, allowing a retry', async () => {
+      const utxo = { address: btcAddresses[1], txid: 'a'.repeat(64), vout: 0, amount: 2_000_000n }
+      const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [utxo])
+      const outputCountBefore = psbt.txOutputs.length
+
+      mockedDataSource.getTxHex.mockRejectedValueOnce(new Error('network error'))
+      await expect(sdk.fundPegin(psbt, 'average')).rejects.toThrow('network error')
+      expect(psbt.txOutputs).toHaveLength(outputCountBefore)
+      expect(psbt.txInputs).toHaveLength(0)
+
+      const funded = await sdk.fundPegin(psbt, 'average')
+      expect(funded.psbt.txInputs).toHaveLength(1)
+      expect(funded.psbt.txOutputs).toHaveLength(outputCountBefore + 1)
+    })
   })
 
   describe('federation address verification', () => {

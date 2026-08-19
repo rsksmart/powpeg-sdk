@@ -35,7 +35,7 @@ export class FederationAddressError extends Error {
   }
 }
 
-/** Thrown when one or more Bitcoin addresses don't belong to the SDK's configured network. */
+/** Thrown when one or more addresses are invalid: a Bitcoin address that doesn't belong to the SDK's configured network, or a malformed Rootstock recipient address. */
 export class InvalidAddressError extends Error {
   readonly invalidAddresses: string[]
 

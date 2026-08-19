@@ -289,7 +289,12 @@ export class PowPegSDK {
     const amount = value ?? BigInt(psbt.txOutputs[1].value)
     const feeRate = await this.bitcoinDataSource.getFeeRate(feeLevel)
     const { inputs, change, totalFee } = await this.calculateFeeAndSelectedInputs(amount, funding.utxos, feeRate)
-    if (change > Math.min(this.burnDustValue, this.burnDustMaxValue)) {
+    // Fetch all external data before the first PSBT mutation
+    const hexTransactions = await Promise.all(inputs.map((input) => this.bitcoinDataSource.getTxHex(input.txid)))
+    const initialInputCount = psbt.txInputs.length
+    const initialOutputCount = psbt.txOutputs.length
+    const addChange = change > Math.min(this.burnDustValue, this.burnDustMaxValue)
+    if (addChange) {
       psbt.addOutput({
         // Fall back to the first funding input's address when every derived
         // change address has already been used.
@@ -297,7 +302,6 @@ export class PowPegSDK {
         value: change,
       })
     }
-    const hexTransactions = await Promise.all(inputs.map((input) => this.bitcoinDataSource.getTxHex(input.txid)))
     inputs.forEach((input, index) => {
       const transaction = Transaction.fromHex(hexTransactions[index])
       psbt.addInput({
@@ -309,6 +313,13 @@ export class PowPegSDK {
         },
       })
     })
+    const expectedInputCount = initialInputCount + inputs.length
+    const expectedOutputCount = initialOutputCount + (addChange ? 1 : 0)
+    assertTruthy(
+      psbt.txInputs.length === expectedInputCount && psbt.txOutputs.length === expectedOutputCount,
+      `Funded PSBT structure mismatch: expected ${expectedInputCount} inputs and ${expectedOutputCount} outputs, got ${psbt.txInputs.length} and ${psbt.txOutputs.length}.`,
+    )
+    this.funding.delete(psbt)
     return { psbt, inputs, transactions: hexTransactions, fee: totalFee }
   }
 
