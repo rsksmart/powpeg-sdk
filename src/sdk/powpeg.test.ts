@@ -449,6 +449,54 @@ describe('sdk', () => {
     })
   })
 
+  describe('BitcoinDataSource address integrity', () => {
+    const txHex = '0200000001a2399abede23d11581f898eaa3b900b5fe09b8e7366bfb362e42173123fdb188000000006b483045022100836f7eb5a993d86fab93397c3cbd000b5d05fccbfa0921e5e3262b810f0085f00220123a465b2abfb73a6d555087312482b8292c5d170e087244b1130084b1be623c0121033b0017bbeced25a65c3f4e18ac49183fbbef9a2c8215a6f48ca59809cd7fd085ffffffff02af195203000000001976a9141f36d1d36d0bf2d279311db70c5b17faca75e0bb88ac0000000000000000536a4c5048454d4901007084170022b6d196534385ea12387b7e0bcfe929911662add4acf95b048323eb3c0dc549f6f233c90333424e8250a29d4f23eb51b6b0a9d01f11b067b0419aa8ad235794fc699814950d1a063a00'
+
+    it('should keep the address it queried for a UTXO, not the one a hostile getOutputs echoes', async () => {
+      const attackerAddress = 'mAttackerUtxoAddress00000000000000'
+      const usedAddress = btcAddresses[1]
+      const hostileDataSource = {
+        getAddressDetails: vi.fn().mockImplementation((address: string) => Promise.resolve({
+          address,
+          balance: address === usedAddress ? 1 : 0,
+          txCount: address === usedAddress ? 1 : 0,
+        })),
+        getFeeRate: vi.fn().mockResolvedValue(mockValues.bitcoinFeeRate),
+        getOutputs: vi.fn().mockResolvedValue([{ address: attackerAddress, txid: 'e'.repeat(64), vout: 0, amount: 2_000_000n }]),
+        getTxHex: vi.fn().mockResolvedValue(txHex),
+        broadcast: vi.fn(),
+      } satisfies BitcoinDataSource
+      const hostileSdk = new PowPegSDK(mockedSigner, hostileDataSource, 'TEST')
+
+      const psbt = await hostileSdk.createPegin(500_000n, rskAddresses[0])
+      const funded = await hostileSdk.fundPegin(psbt, 'average')
+
+      expect(funded.inputs).toHaveLength(1)
+      expect(funded.inputs[0].address).toBe(usedAddress)
+      expect(funded.inputs[0].address).not.toBe(attackerAddress)
+    })
+
+    it('should keep the address it queried for the change output, not the one a hostile getAddressDetails echoes', async () => {
+      const attackerAddress = 'mAttackerChangeAddress0000000000000'
+      const hostileDataSource = {
+        getAddressDetails: vi.fn().mockResolvedValue({ address: attackerAddress, balance: 0, txCount: 0 }),
+        getFeeRate: vi.fn().mockResolvedValue(mockValues.bitcoinFeeRate),
+        getOutputs: vi.fn().mockResolvedValue([]),
+        getTxHex: vi.fn().mockResolvedValue(txHex),
+        broadcast: vi.fn(),
+      } satisfies BitcoinDataSource
+      const hostileSdk = new PowPegSDK(mockedSigner, hostileDataSource, 'TEST')
+      const utxo = { address: btcAddresses[1], txid: 'f'.repeat(64), vout: 0, amount: 2_000_000n }
+
+      const psbt = await hostileSdk.createPegin(500_000n, rskAddresses[0], [utxo])
+      const funded = await hostileSdk.fundPegin(psbt, 'average')
+
+      const changeOutput = funded.psbt.txOutputs[2]
+      expect(changeOutput.address).toBe(btcAddresses[0])
+      expect(changeOutput.address).not.toBe(attackerAddress)
+    })
+  })
+
   describe('federation address verification', () => {
     it('should fail to create a peg-in when the pegin configuration reports a different federation address', async () => {
       mockApiService.getPeginConfiguration.mockResolvedValueOnce({

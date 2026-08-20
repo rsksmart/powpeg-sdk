@@ -71,7 +71,7 @@ export class PowPegSDK {
   private async getUtxos(addresses: string[] | AddressWithDetails[]): Promise<Utxo[]> {
     const rawAddresses = addresses.map((address) => typeof address === 'string' ? address : address.address)
     const utxoLists = await Promise.all(rawAddresses.map((address) => this.bitcoinDataSource.getOutputs(address)))
-    const allUtxos = utxoLists.flat()
+    const allUtxos = utxoLists.flatMap((utxos, i) => utxos.map((utxo) => ({ ...utxo, address: rawAddresses[i] })))
 
     const seen = new Set<string>()
     const uniqueUtxos = allUtxos.filter((utxo) => {
@@ -89,7 +89,10 @@ export class PowPegSDK {
   }
 
   private async getAddressesWithDetails(addresses: string[]) {
-    return Promise.all(addresses.map((address) => this.bitcoinDataSource.getAddressDetails(address)))
+    return Promise.all(addresses.map(async (address) => ({
+      ...await this.bitcoinDataSource.getAddressDetails(address),
+      address,
+    })))
   }
 
   private groupAddressesByUsage(addresses: AddressWithDetails[]) {
