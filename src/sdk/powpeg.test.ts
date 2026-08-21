@@ -447,6 +447,37 @@ describe('sdk', () => {
       expect(funded.psbt.txInputs).toHaveLength(1)
       expect(funded.psbt.txOutputs).toHaveLength(outputCountBefore + 1)
     })
+
+    it('should keep a PSBT bound to the signer active when it was created, even if the instance-level signer changes before signing', async () => {
+      const changeAddressA = 'mChangeAddressSignerA00000000000000'
+      const changeAddressB = 'mChangeAddressSignerB00000000000000'
+      let resolveSignerAChangeAddresses: (addresses: string[]) => void
+      const signerA = {
+        getNonChangeAddresses: vi.fn().mockReturnValue(btcAddresses.slice(1)),
+        getChangeAddresses: vi.fn(() => new Promise<string[]>((resolve) => { resolveSignerAChangeAddresses = resolve })),
+        signTransaction: vi.fn(),
+      } satisfies BitcoinSigner
+      const signerB = {
+        getNonChangeAddresses: vi.fn().mockReturnValue(btcAddresses.slice(1)),
+        getChangeAddresses: vi.fn().mockResolvedValue([changeAddressB]),
+        signTransaction: vi.fn(),
+      } satisfies BitcoinSigner
+      const utxoA = { address: btcAddresses[1], txid: 'c'.repeat(64), vout: 0, amount: 2_000_000n }
+      const utxoB = { address: btcAddresses[1], txid: 'd'.repeat(64), vout: 0, amount: 2_000_000n }
+
+      sdk['bitcoinSigner'] = signerA
+      const pendingA = sdk.createPegin(500_000n, rskAddresses[0], [utxoA])
+      sdk['bitcoinSigner'] = signerB
+      await sdk.createPegin(500_000n, rskAddresses[0], [utxoB])
+      resolveSignerAChangeAddresses!([changeAddressA])
+      const psbtA = await pendingA
+      sdk['bitcoinSigner'] = mockedSigner
+
+      await sdk.signAndBroadcastPegin(psbtA)
+
+      expect(signerA.signTransaction).toHaveBeenCalledWith(psbtA, undefined, undefined)
+      expect(signerB.signTransaction).not.toHaveBeenCalled()
+    })
   })
 
   describe('BitcoinDataSource address integrity', () => {

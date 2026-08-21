@@ -19,6 +19,7 @@ export class PowPegSDK {
   private powpegRsktHeader = '52534b5401'
   private burnDustMaxValue = 30_000
   private funding = new WeakMap<Psbt, { utxos: Utxo[], changeAddress?: string }>()
+  private psbtSigner = new WeakMap<Psbt, BitcoinSigner>()
   private minPeginAmount = 500_000n
   private peginFeeEstimationInputs = 2
   private minPegoutAmount = '0.004'
@@ -127,9 +128,9 @@ export class PowPegSDK {
     return { withBalance, withoutBalance }
   }
 
-  private async getAddressesGroupedByUsage() {
-    const nonChangeAddresses = await this.bitcoinSigner.getNonChangeAddresses(this.maxBundleSize)
-    const changeAddresses = await this.bitcoinSigner.getChangeAddresses(this.maxBundleSize)
+  private async getAddressesGroupedByUsage(signer: BitcoinSigner) {
+    const nonChangeAddresses = await signer.getNonChangeAddresses(this.maxBundleSize)
+    const changeAddresses = await signer.getChangeAddresses(this.maxBundleSize)
     const [nonChangeDetails, changeDetails] = await Promise.all([
       this.getAddressesWithDetails(nonChangeAddresses),
       this.getAddressesWithDetails(changeAddresses),
@@ -212,7 +213,8 @@ export class PowPegSDK {
    * @returns {Promise<Psbt>} The unsigned, unfunded peg-in PSBT.
    */
   async createPegin(amount: bigint, recipientAddress: string, selectedUtxos?: Utxo[]) {
-    const addresses = await this.getAddressesGroupedByUsage()
+    const signer = this.bitcoinSigner
+    const addresses = await this.getAddressesGroupedByUsage(signer)
     const psbt = new Psbt({ network: this.btcNetworkConfig.lib })
     const refundAddress = addresses.nonChange.unused[0]?.address
     const { output: script } = payments.embed({ data: [this.getRskOutput(recipientAddress, refundAddress)] })
@@ -237,6 +239,7 @@ export class PowPegSDK {
       utxos = await this.getUtxos(withBalance)
     }
     this.funding.set(psbt, { utxos, changeAddress: addresses.change.unused[0]?.address })
+    this.psbtSigner.set(psbt, signer)
 
     return psbt
   }
@@ -382,7 +385,8 @@ export class PowPegSDK {
   }
 
   private async signPegin(psbt: Psbt, inputs?: Utxo[], transactions?: string[]): Promise<string> {
-    return this.bitcoinSigner.signTransaction(psbt, inputs, transactions)
+    const signer = this.psbtSigner.get(psbt) ?? this.bitcoinSigner
+    return signer.signTransaction(psbt, inputs, transactions)
   }
 
   /**
