@@ -317,6 +317,7 @@ export class PowPegSDK {
     const { inputs, change, totalFee } = await this.calculateFeeAndSelectedInputs(amount, funding.utxos, resolvedFeeRate)
     // Fetch all external data before the first PSBT mutation
     const hexTransactions = await Promise.all(inputs.map((input) => this.bitcoinDataSource.getTxHex(input.txid)))
+    const parsedTransactions = hexTransactions.map((hex) => Transaction.fromHex(hex))
     const initialInputCount = psbt.txInputs.length
     const initialOutputCount = psbt.txOutputs.length
     const addChange = change > Math.min(this.burnDustValue, this.burnDustMaxValue)
@@ -329,7 +330,7 @@ export class PowPegSDK {
       })
     }
     inputs.forEach((input, index) => {
-      const transaction = Transaction.fromHex(hexTransactions[index])
+      const transaction = parsedTransactions[index]
       psbt.addInput({
         hash: input.txid,
         index: input.vout,

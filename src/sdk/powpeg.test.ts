@@ -448,6 +448,21 @@ describe('sdk', () => {
       expect(funded.psbt.txOutputs).toHaveLength(outputCountBefore + 1)
     })
 
+    it('should leave the PSBT unmodified when a fetched transaction fails to parse, allowing a retry', async () => {
+      const utxo = { address: btcAddresses[1], txid: '3'.repeat(64), vout: 0, amount: 2_000_000n }
+      const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [utxo])
+      const outputCountBefore = psbt.txOutputs.length
+
+      mockedDataSource.getTxHex.mockResolvedValueOnce('00'.repeat(4))
+      await expect(sdk.fundPegin(psbt, 'average')).rejects.toThrow()
+      expect(psbt.txOutputs).toHaveLength(outputCountBefore)
+      expect(psbt.txInputs).toHaveLength(0)
+
+      const funded = await sdk.fundPegin(psbt, 'average')
+      expect(funded.psbt.txInputs).toHaveLength(1)
+      expect(funded.psbt.txOutputs).toHaveLength(outputCountBefore + 1)
+    })
+
     it('should keep a PSBT bound to the signer active when it was created, even if the instance-level signer changes before signing', async () => {
       const changeAddressA = 'mChangeAddressSignerA00000000000000'
       const changeAddressB = 'mChangeAddressSignerB00000000000000'
