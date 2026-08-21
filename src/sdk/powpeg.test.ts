@@ -1,7 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { Psbt } from 'bitcoinjs-lib'
 import { PowPegSDK } from './powpeg'
+import { ApiService } from '../api/api'
 import type { BitcoinSigner, BitcoinDataSource } from '../types'
-import { AmountBelowMinError, NotEnoughFundsError, InvalidAddressError } from '../errors'
+import { AmountBelowMinError, NotEnoughFundsError, InvalidAddressError, FederationAddressError, InvalidFeeRateError } from '../errors'
 import { ethers } from '@rsksmart/bridges-core-sdk'
 import { TxType, PegoutStatuses, PeginStatuses } from '../types'
 
@@ -41,6 +43,12 @@ const mockProvider = createMockProvider()
 const mockApiService = {
   getTransactionStatus: vi.fn(),
   getFeatures: vi.fn(),
+  getPeginConfiguration: vi.fn().mockResolvedValue({
+    minValue: 500_000,
+    maxValue: 4_199_866_190_155_915,
+    federationAddress: '2MskK2P1Qw9QbeZ6MG5jmeWMX2d4MFANgkD',
+    btcConfirmations: 100,
+  }),
 }
 
 vi.mock('../api/api', async () => {
@@ -138,6 +146,12 @@ describe('sdk', () => {
 
     expect(fees.bitcoinFee).toBe(15_166n)
     expect(fees.rootstockFee).toBe(300_006_150_000n)
+  })
+
+  it('should pass its maxFeeRateSatPerByte through to the default ApiService', () => {
+    new PowPegSDK(mockedSigner, null, 'TEST', undefined, undefined, 10, 2000, 2500)
+
+    expect(ApiService).toHaveBeenCalledWith('TEST', undefined, 2500)
   })
 
   describe('getFeatures', () => {
@@ -375,6 +389,352 @@ describe('sdk', () => {
       expect(result.inputs.length).toBeGreaterThan(0)
       expect(result.fee).toBeGreaterThan(0)
       expect(result.transactions).toBeDefined()
+    })
+  })
+
+  describe('funding context isolation', () => {
+    const txHex = '0200000001a2399abede23d11581f898eaa3b900b5fe09b8e7366bfb362e42173123fdb188000000006b483045022100836f7eb5a993d86fab93397c3cbd000b5d05fccbfa0921e5e3262b810f0085f00220123a465b2abfb73a6d555087312482b8292c5d170e087244b1130084b1be623c0121033b0017bbeced25a65c3f4e18ac49183fbbef9a2c8215a6f48ca59809cd7fd085ffffffff02af195203000000001976a9141f36d1d36d0bf2d279311db70c5b17faca75e0bb88ac0000000000000000536a4c5048454d4901007084170022b6d196534385ea12387b7e0bcfe929911662add4acf95b048323eb3c0dc549f6f233c90333424e8250a29d4f23eb51b6b0a9d01f11b067b0419aa8ad235794fc699814950d1a063a00'
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      mockedDataSource.getTxHex.mockResolvedValue(txHex)
+    })
+
+    it('should fund each PSBT with its own UTXOs when peg-ins are created interleaved', async () => {
+      const utxoA = { address: btcAddresses[1], txid: 'a'.repeat(64), vout: 0, amount: 2_000_000n }
+      const utxoB = { address: btcAddresses[2], txid: 'b'.repeat(64), vout: 0, amount: 2_000_000n }
+
+      const psbtA = await sdk.createPegin(500_000n, rskAddresses[0], [utxoA])
+      const psbtB = await sdk.createPegin(500_000n, rskAddresses[0], [utxoB])
+
+      const fundedA = await sdk.fundPegin(psbtA, 'average')
+      const fundedB = await sdk.fundPegin(psbtB, 'average')
+
+      expect(fundedA.inputs).toHaveLength(1)
+      expect(fundedA.inputs[0].txid).toBe(utxoA.txid)
+      expect(fundedB.inputs).toHaveLength(1)
+      expect(fundedB.inputs[0].txid).toBe(utxoB.txid)
+    })
+
+    it('should not reuse a previous peg-in change address in createAndFundPsbt', async () => {
+      const previousPeginUtxo = { address: btcAddresses[1], txid: 'a'.repeat(64), vout: 0, amount: 2_000_000n }
+      await sdk.createPegin(500_000n, rskAddresses[0], [previousPeginUtxo])
+
+      const psbtUtxo = { address: btcAddresses[4], txid: 'b'.repeat(64), vout: 0, amount: 2_000_000n }
+      const { psbt } = await sdk.createAndFundPsbt(500_000n, btcAddresses[3], [psbtUtxo], 'average')
+
+      const changeOutput = psbt.txOutputs[1]
+      expect(changeOutput.address).toBe(psbtUtxo.address)
+      expect(changeOutput.address).not.toBe(btcAddresses[0])
+    })
+
+    it('should fail to fund a PSBT that has no funding context', async () => {
+      await expect(sdk.fundPegin(new Psbt(), 'average')).rejects.toThrow('No funding context')
+    })
+
+    it('should fail to fund the same PSBT twice', async () => {
+      const utxo = { address: btcAddresses[1], txid: 'a'.repeat(64), vout: 0, amount: 2_000_000n }
+      const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [utxo])
+
+      await expect(sdk.fundPegin(psbt, 'average')).resolves.toBeDefined()
+      await expect(sdk.fundPegin(psbt, 'average')).rejects.toThrow('No funding context')
+    })
+
+    it('should leave the PSBT unmodified when funding fails, allowing a retry', async () => {
+      const utxo = { address: btcAddresses[1], txid: 'a'.repeat(64), vout: 0, amount: 2_000_000n }
+      const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [utxo])
+      const outputCountBefore = psbt.txOutputs.length
+
+      mockedDataSource.getTxHex.mockRejectedValueOnce(new Error('network error'))
+      await expect(sdk.fundPegin(psbt, 'average')).rejects.toThrow('network error')
+      expect(psbt.txOutputs).toHaveLength(outputCountBefore)
+      expect(psbt.txInputs).toHaveLength(0)
+
+      const funded = await sdk.fundPegin(psbt, 'average')
+      expect(funded.psbt.txInputs).toHaveLength(1)
+      expect(funded.psbt.txOutputs).toHaveLength(outputCountBefore + 1)
+    })
+
+    it('should leave the PSBT unmodified when a fetched transaction fails to parse, allowing a retry', async () => {
+      const utxo = { address: btcAddresses[1], txid: '3'.repeat(64), vout: 0, amount: 2_000_000n }
+      const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [utxo])
+      const outputCountBefore = psbt.txOutputs.length
+
+      mockedDataSource.getTxHex.mockResolvedValueOnce('00'.repeat(4))
+      await expect(sdk.fundPegin(psbt, 'average')).rejects.toThrow()
+      expect(psbt.txOutputs).toHaveLength(outputCountBefore)
+      expect(psbt.txInputs).toHaveLength(0)
+
+      const funded = await sdk.fundPegin(psbt, 'average')
+      expect(funded.psbt.txInputs).toHaveLength(1)
+      expect(funded.psbt.txOutputs).toHaveLength(outputCountBefore + 1)
+    })
+
+    it('should leave the PSBT unmodified when a UTXO references a vout that does not exist on its fetched transaction', async () => {
+      const utxo = { address: btcAddresses[1], txid: '4'.repeat(64), vout: 5, amount: 2_000_000n }
+      const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [utxo])
+      const outputCountBefore = psbt.txOutputs.length
+
+      await expect(sdk.fundPegin(psbt, 'average')).rejects.toThrow('was not found in the fetched transaction')
+      expect(psbt.txOutputs).toHaveLength(outputCountBefore)
+      expect(psbt.txInputs).toHaveLength(0)
+    })
+
+    it('should block a retry after a mid-mutation failure instead of allowing it to double-mutate the PSBT', async () => {
+      const utxo = { address: btcAddresses[1], txid: 'not-a-valid-txid', vout: 0, amount: 2_000_000n }
+      const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [utxo])
+
+      await expect(sdk.fundPegin(psbt, 'average')).rejects.toThrow()
+      await expect(sdk.fundPegin(psbt, 'average')).rejects.toThrow('No funding context')
+    })
+
+    it('should keep a PSBT bound to the signer active when it was created, even if the instance-level signer changes before signing', async () => {
+      const changeAddressA = 'mChangeAddressSignerA00000000000000'
+      const changeAddressB = 'mChangeAddressSignerB00000000000000'
+      let resolveSignerAChangeAddresses: (addresses: string[]) => void
+      const signerA = {
+        getNonChangeAddresses: vi.fn().mockReturnValue(btcAddresses.slice(1)),
+        getChangeAddresses: vi.fn(() => new Promise<string[]>((resolve) => { resolveSignerAChangeAddresses = resolve })),
+        signTransaction: vi.fn(),
+      } satisfies BitcoinSigner
+      const signerB = {
+        getNonChangeAddresses: vi.fn().mockReturnValue(btcAddresses.slice(1)),
+        getChangeAddresses: vi.fn().mockResolvedValue([changeAddressB]),
+        signTransaction: vi.fn(),
+      } satisfies BitcoinSigner
+      const utxoA = { address: btcAddresses[1], txid: 'c'.repeat(64), vout: 0, amount: 2_000_000n }
+      const utxoB = { address: btcAddresses[1], txid: 'd'.repeat(64), vout: 0, amount: 2_000_000n }
+
+      sdk['bitcoinSigner'] = signerA
+      const pendingA = sdk.createPegin(500_000n, rskAddresses[0], [utxoA])
+      sdk['bitcoinSigner'] = signerB
+      await sdk.createPegin(500_000n, rskAddresses[0], [utxoB])
+      resolveSignerAChangeAddresses!([changeAddressA])
+      const psbtA = await pendingA
+      sdk['bitcoinSigner'] = mockedSigner
+
+      await sdk.signAndBroadcastPegin(psbtA)
+
+      expect(signerA.signTransaction).toHaveBeenCalledWith(psbtA, undefined, undefined)
+      expect(signerB.signTransaction).not.toHaveBeenCalled()
+    })
+
+    it('should sign a PSBT from createAndFundPsbt with the signer passed to it, not the instance signer', async () => {
+      const psbtSigner = {
+        getNonChangeAddresses: vi.fn(),
+        getChangeAddresses: vi.fn(),
+        signTransaction: vi.fn().mockResolvedValue('signed-by-psbt-signer'),
+      } satisfies BitcoinSigner
+      const utxo = { address: btcAddresses[1], txid: '1'.repeat(64), vout: 0, amount: 2_000_000n }
+
+      const { psbt, inputs, transactions } = await sdk.createAndFundPsbt(500_000n, btcAddresses[2], [utxo], 'average', psbtSigner)
+      await sdk.signAndBroadcastPegin(psbt, inputs, transactions)
+
+      expect(psbtSigner.signTransaction).toHaveBeenCalledWith(psbt, inputs, transactions)
+      expect(mockedSigner.signTransaction).not.toHaveBeenCalled()
+    })
+
+    it('should fail to sign a PSBT that has no signer bound to it', async () => {
+      const utxo = { address: btcAddresses[1], txid: '2'.repeat(64), vout: 0, amount: 2_000_000n }
+
+      const { psbt, inputs, transactions } = await sdk.createAndFundPsbt(500_000n, btcAddresses[2], [utxo], 'average')
+
+      await expect(sdk.signAndBroadcastPegin(psbt, inputs, transactions)).rejects.toThrow('No signer bound to this PSBT')
+    })
+  })
+
+  describe('BitcoinDataSource address integrity', () => {
+    const txHex = '0200000001a2399abede23d11581f898eaa3b900b5fe09b8e7366bfb362e42173123fdb188000000006b483045022100836f7eb5a993d86fab93397c3cbd000b5d05fccbfa0921e5e3262b810f0085f00220123a465b2abfb73a6d555087312482b8292c5d170e087244b1130084b1be623c0121033b0017bbeced25a65c3f4e18ac49183fbbef9a2c8215a6f48ca59809cd7fd085ffffffff02af195203000000001976a9141f36d1d36d0bf2d279311db70c5b17faca75e0bb88ac0000000000000000536a4c5048454d4901007084170022b6d196534385ea12387b7e0bcfe929911662add4acf95b048323eb3c0dc549f6f233c90333424e8250a29d4f23eb51b6b0a9d01f11b067b0419aa8ad235794fc699814950d1a063a00'
+
+    it('should keep the address it queried for a UTXO, not the one a hostile getOutputs echoes', async () => {
+      const attackerAddress = 'mAttackerUtxoAddress00000000000000'
+      const usedAddress = btcAddresses[1]
+      const hostileDataSource = {
+        getAddressDetails: vi.fn().mockImplementation((address: string) => Promise.resolve({
+          address,
+          balance: address === usedAddress ? 1 : 0,
+          txCount: address === usedAddress ? 1 : 0,
+        })),
+        getFeeRate: vi.fn().mockResolvedValue(mockValues.bitcoinFeeRate),
+        getOutputs: vi.fn().mockResolvedValue([{ address: attackerAddress, txid: 'e'.repeat(64), vout: 0, amount: 2_000_000n }]),
+        getTxHex: vi.fn().mockResolvedValue(txHex),
+        broadcast: vi.fn(),
+      } satisfies BitcoinDataSource
+      const hostileSdk = new PowPegSDK(mockedSigner, hostileDataSource, 'TEST')
+
+      const psbt = await hostileSdk.createPegin(500_000n, rskAddresses[0])
+      const funded = await hostileSdk.fundPegin(psbt, 'average')
+
+      expect(funded.inputs).toHaveLength(1)
+      expect(funded.inputs[0].address).toBe(usedAddress)
+      expect(funded.inputs[0].address).not.toBe(attackerAddress)
+    })
+
+    it('should keep the address it queried for the change output, not the one a hostile getAddressDetails echoes', async () => {
+      const attackerAddress = 'mAttackerChangeAddress0000000000000'
+      const hostileDataSource = {
+        getAddressDetails: vi.fn().mockResolvedValue({ address: attackerAddress, balance: 0, txCount: 0 }),
+        getFeeRate: vi.fn().mockResolvedValue(mockValues.bitcoinFeeRate),
+        getOutputs: vi.fn().mockResolvedValue([]),
+        getTxHex: vi.fn().mockResolvedValue(txHex),
+        broadcast: vi.fn(),
+      } satisfies BitcoinDataSource
+      const hostileSdk = new PowPegSDK(mockedSigner, hostileDataSource, 'TEST')
+      const utxo = { address: btcAddresses[1], txid: 'f'.repeat(64), vout: 0, amount: 2_000_000n }
+
+      const psbt = await hostileSdk.createPegin(500_000n, rskAddresses[0], [utxo])
+      const funded = await hostileSdk.fundPegin(psbt, 'average')
+
+      const changeOutput = funded.psbt.txOutputs[2]
+      expect(changeOutput.address).toBe(btcAddresses[0])
+      expect(changeOutput.address).not.toBe(attackerAddress)
+    })
+  })
+
+  describe('federation address verification', () => {
+    it('should fail to create a peg-in when the pegin configuration reports a different federation address', async () => {
+      mockApiService.getPeginConfiguration.mockResolvedValueOnce({
+        minValue: 500_000,
+        maxValue: 4_199_866_190_155_915,
+        federationAddress: '2N7eSt5myGSXoiAnqpzu856EwgA8SHg53Lg',
+        btcConfirmations: 100,
+      })
+
+      await expect(sdk.createPegin(500_000n, rskAddresses[0])).rejects.toThrowError(FederationAddressError)
+    })
+
+    it('should fail to create a peg-in when the pegin configuration is unavailable', async () => {
+      mockApiService.getPeginConfiguration.mockRejectedValueOnce(new Error('Not found'))
+
+      await expect(sdk.createPegin(500_000n, rskAddresses[0])).rejects.toThrowError(FederationAddressError)
+    })
+  })
+
+  describe('coin selection', () => {
+    const feePerInput = 290 // 2 sat/B * 145 bytes
+    const baseFee = 218
+
+    const utxo = (amount: bigint, i: number) => ({
+      address: btcAddresses[0],
+      txid: `tx${i}`,
+      vout: 0,
+      amount,
+    })
+
+    it('should prefer a single large UTXO over many small ones', () => {
+      const utxos = [...Array.from({ length: 40 }, (_, i) => utxo(40_000n, i)), utxo(5_000_000n, 40)]
+
+      const { inputs, rest } = sdk['selectInputs'](500_000n, utxos, baseFee, feePerInput)
+
+      expect(inputs).toHaveLength(1)
+      expect(inputs[0].amount).toBe(5_000_000n)
+      expect(rest).toBeLessThanOrEqual(0)
+    })
+
+    it('should skip UTXOs worth less than their own input fee', () => {
+      const utxos = Array.from({ length: 60 }, (_, i) => utxo(200n, i))
+
+      const { inputs, rest } = sdk['selectInputs'](500_000n, utxos, baseFee, feePerInput)
+
+      expect(inputs).toHaveLength(0)
+      expect(rest).toBeGreaterThan(0)
+    })
+
+    it('should stop selecting once the target is covered', () => {
+      const utxos = [utxo(600_000n, 0), utxo(550_000n, 1), utxo(500_000n, 2)]
+
+      const { inputs } = sdk['selectInputs'](500_000n, utxos, baseFee, feePerInput)
+
+      expect(inputs).toHaveLength(1)
+      expect(inputs[0].amount).toBe(600_000n)
+    })
+
+    it('should not mutate the caller\'s UTXO array', () => {
+      const utxos = [utxo(40_000n, 0), utxo(5_000_000n, 1), utxo(100_000n, 2)]
+      const originalOrder = utxos.map((u) => u.txid)
+
+      sdk['selectInputs'](500_000n, utxos, baseFee, feePerInput)
+
+      expect(utxos.map((u) => u.txid)).toEqual(originalOrder)
+    })
+
+    it('should estimate the fee with the same selection used to fund when UTXOs are provided', async () => {
+      const utxos = [...Array.from({ length: 40 }, (_, i) => utxo(40_000n, i)), utxo(5_000_000n, 40)]
+
+      const estimatedFee = await sdk.estimatePeginFee(500_000n, 'fast', utxos)
+      const feeRate = mockValues.bitcoinFeeRate
+      const expectedBaseFee = feeRate * (13 + 32 * 3)
+      const expectedFeePerInput = feeRate * 145
+
+      // one input selected, so the estimate reflects exactly one input's cost
+      expect(estimatedFee).toBe(expectedBaseFee + expectedFeePerInput)
+    })
+  })
+
+  describe('fee rate validation', () => {
+    const fundableUtxo = (txid: string) => ({ address: btcAddresses[1], txid, vout: 0, amount: 2_000_000n })
+
+    it.each([0, -5, 1.5, NaN])('should reject a fee rate of %p from the data source', async (feeRate) => {
+      mockedDataSource.getFeeRate.mockReturnValueOnce(feeRate)
+      const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [fundableUtxo(`invalid-rate-${feeRate}`)])
+
+      await expect(sdk.fundPegin(psbt, 'average')).rejects.toThrowError(InvalidFeeRateError)
+    })
+
+    it('should reject a fee rate above the configured bound', async () => {
+      mockedDataSource.getFeeRate.mockReturnValueOnce(1001)
+      const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [fundableUtxo('above-bound')])
+
+      await expect(sdk.fundPegin(psbt, 'average')).rejects.toThrowError(InvalidFeeRateError)
+    })
+
+    it('should reject a fee disproportionate to the amount being sent, even at an in-bounds rate', async () => {
+      mockedDataSource.getFeeRate.mockReturnValueOnce(1000)
+      const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [fundableUtxo('disproportionate-fee')])
+
+      await expect(sdk.fundPegin(psbt, 'average')).rejects.toThrowError(InvalidFeeRateError)
+    })
+
+    it('should reject an out-of-bounds fee rate passed explicitly to fundPegin, bypassing the data source', async () => {
+      const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [fundableUtxo('explicit-rate-bypass')])
+
+      await expect(sdk.fundPegin(psbt, 'average', undefined, 1001)).rejects.toThrowError(InvalidFeeRateError)
+    })
+  })
+
+  describe('RSK recipient validation', () => {
+    const validRecipients = [
+      // EIP-55 checksum (what ethers accepts)
+      '0x8C2f0AbF2B1c4d4f7f5B6e3c3F2a6B7F7c7C1D9d',
+      // EIP-1191 chainId 30 (RSK mainnet)
+      '0x8c2f0AbF2B1C4d4f7F5b6e3C3F2A6B7F7c7c1d9d',
+      // EIP-1191 chainId 31 (RSK testnet)
+      '0x8c2f0abF2b1C4D4f7F5b6e3c3F2a6B7f7c7c1d9d',
+      // all-lowercase, and without 0x prefix
+      '0x8c2f0abf2b1c4d4f7f5b6e3c3f2a6b7f7c7c1d9d',
+      '8c2f0abf2b1c4d4f7f5b6e3c3f2a6b7f7c7c1d9d',
+    ]
+
+    const invalidRecipients = [
+      '0x8c2f0abf2b1c4d4f7f5b6e3c3f2a6b7f7c7c1d9', // 39 hex chars (truncated)
+      '0x8c2f0abf2b1c4d4f7f5b6e3c3f2a6b7f7c7c1d9dd', // 41 hex chars
+      '0x8c2f0abf2b1c4d4f7f5b6e3c3f2a6b7f7c7cZZZZ', // non-hex characters
+      'XE38GDI18R1Q9VVZ9YX48FQ1HBYPCUM2W7X', // ICAP/IBAN form accepted by ethers isAddress
+      'tb1qm0f4nu37q8u82txpj0l0cp924836gs2q4m9rdf', // Bitcoin address pasted by mistake
+      '',
+    ]
+
+    it.each(validRecipients)('should accept valid recipient %s and encode the full 20-byte recipient', async (recipient) => {
+      const psbt = await sdk.createPegin(500_000n, recipient)
+
+      // payload starts with the 5-byte protocol header followed by the 20-byte
+      // recipient (a refund entry may follow, making the payload 46 bytes)
+      const scriptHex = psbt.txOutputs[0].script.toString('hex')
+      expect(scriptHex).toContain(`52534b5401${recipient.toLowerCase().replace(/^0x/, '')}`)
+    })
+
+    it.each(invalidRecipients)('should reject invalid recipient %s', async (recipient) => {
+      await expect(sdk.createPegin(500_000n, recipient)).rejects.toThrowError(InvalidAddressError)
     })
   })
 
