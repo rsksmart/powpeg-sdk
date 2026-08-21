@@ -372,20 +372,25 @@ export class PowPegSDK {
    * @param {string} recipientAddress - Bitcoin address to receive the payment.
    * @param {Utxo[]} utxos - UTXOs to fund the transaction with.
    * @param {FeeLevel} feeLevel - Fee priority level used to look up the current network fee rate. Defaults to `'fast'`.
+   * @param {BitcoinSigner} [signer] - Signer to bind to the returned PSBT for {@link signAndBroadcastPegin}. Required to sign the result, since this method takes no signer otherwise.
    * @returns {Promise<UnsignedPegin>} The funded, unsigned PSBT along with its inputs, raw transactions, and total fee.
    */
-  async createAndFundPsbt(amount: bigint, recipientAddress: string, utxos: Utxo[], feeLevel: FeeLevel = 'fast'): Promise<UnsignedPegin> {
+  async createAndFundPsbt(amount: bigint, recipientAddress: string, utxos: Utxo[], feeLevel: FeeLevel = 'fast', signer?: BitcoinSigner): Promise<UnsignedPegin> {
     const psbt = new Psbt({ network: this.btcNetworkConfig.lib })
     psbt.addOutput({
       address: recipientAddress,
       value: Number(amount),
     })
     this.funding.set(psbt, { utxos: [...utxos] })
+    if (signer) {
+      this.psbtSigner.set(psbt, signer)
+    }
     return this.fundPegin(psbt, feeLevel, amount)
   }
 
   private async signPegin(psbt: Psbt, inputs?: Utxo[], transactions?: string[]): Promise<string> {
-    const signer = this.psbtSigner.get(psbt) ?? this.bitcoinSigner
+    const signer = this.psbtSigner.get(psbt)
+    assertTruthy(signer, 'No signer bound to this PSBT. Sign the PSBT returned by createPegin, createAndFundPegin, or createAndFundPsbt with a signer argument.')
     return signer.signTransaction(psbt, inputs, transactions)
   }
 

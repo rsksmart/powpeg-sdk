@@ -478,6 +478,29 @@ describe('sdk', () => {
       expect(signerA.signTransaction).toHaveBeenCalledWith(psbtA, undefined, undefined)
       expect(signerB.signTransaction).not.toHaveBeenCalled()
     })
+
+    it('should sign a PSBT from createAndFundPsbt with the signer passed to it, not the instance signer', async () => {
+      const psbtSigner = {
+        getNonChangeAddresses: vi.fn(),
+        getChangeAddresses: vi.fn(),
+        signTransaction: vi.fn().mockResolvedValue('signed-by-psbt-signer'),
+      } satisfies BitcoinSigner
+      const utxo = { address: btcAddresses[1], txid: '1'.repeat(64), vout: 0, amount: 2_000_000n }
+
+      const { psbt, inputs, transactions } = await sdk.createAndFundPsbt(500_000n, btcAddresses[2], [utxo], 'average', psbtSigner)
+      await sdk.signAndBroadcastPegin(psbt, inputs, transactions)
+
+      expect(psbtSigner.signTransaction).toHaveBeenCalledWith(psbt, inputs, transactions)
+      expect(mockedSigner.signTransaction).not.toHaveBeenCalled()
+    })
+
+    it('should fail to sign a PSBT that has no signer bound to it', async () => {
+      const utxo = { address: btcAddresses[1], txid: '2'.repeat(64), vout: 0, amount: 2_000_000n }
+
+      const { psbt, inputs, transactions } = await sdk.createAndFundPsbt(500_000n, btcAddresses[2], [utxo], 'average')
+
+      await expect(sdk.signAndBroadcastPegin(psbt, inputs, transactions)).rejects.toThrow('No signer bound to this PSBT')
+    })
   })
 
   describe('BitcoinDataSource address integrity', () => {
