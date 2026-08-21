@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { Psbt } from 'bitcoinjs-lib'
 import { PowPegSDK } from './powpeg'
+import { ApiService } from '../api/api'
 import type { BitcoinSigner, BitcoinDataSource } from '../types'
 import { AmountBelowMinError, NotEnoughFundsError, InvalidAddressError, FederationAddressError, InvalidFeeRateError } from '../errors'
 import { ethers } from '@rsksmart/bridges-core-sdk'
@@ -145,6 +146,12 @@ describe('sdk', () => {
 
     expect(fees.bitcoinFee).toBe(15_166n)
     expect(fees.rootstockFee).toBe(300_006_150_000n)
+  })
+
+  it('should pass its maxFeeRateSatPerByte through to the default ApiService', () => {
+    new PowPegSDK(mockedSigner, null, 'TEST', undefined, undefined, 10, 2000, 2500)
+
+    expect(ApiService).toHaveBeenCalledWith('TEST', undefined, 2500)
   })
 
   describe('getFeatures', () => {
@@ -471,6 +478,14 @@ describe('sdk', () => {
       await expect(sdk.fundPegin(psbt, 'average')).rejects.toThrow('was not found in the fetched transaction')
       expect(psbt.txOutputs).toHaveLength(outputCountBefore)
       expect(psbt.txInputs).toHaveLength(0)
+    })
+
+    it('should block a retry after a mid-mutation failure instead of allowing it to double-mutate the PSBT', async () => {
+      const utxo = { address: btcAddresses[1], txid: 'not-a-valid-txid', vout: 0, amount: 2_000_000n }
+      const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [utxo])
+
+      await expect(sdk.fundPegin(psbt, 'average')).rejects.toThrow()
+      await expect(sdk.fundPegin(psbt, 'average')).rejects.toThrow('No funding context')
     })
 
     it('should keep a PSBT bound to the signer active when it was created, even if the instance-level signer changes before signing', async () => {

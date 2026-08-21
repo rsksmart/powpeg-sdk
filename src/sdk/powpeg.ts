@@ -57,7 +57,7 @@ export class PowPegSDK {
     this.btcNetworkConfig = networks[network]
     this.rskProvider = new ethers.providers.JsonRpcProvider(rpcProviderUrl ?? this.publicNodes[network])
     this.bridge = new Bridge(this.rskProvider)
-    this.api = new ApiService(network, apiUrl)
+    this.api = new ApiService(network, apiUrl, maxFeeRateSatPerByte)
   }
 
   private get bitcoinSigner() {
@@ -325,6 +325,7 @@ export class PowPegSDK {
     const initialInputCount = psbt.txInputs.length
     const initialOutputCount = psbt.txOutputs.length
     const addChange = change > Math.min(this.burnDustValue, this.burnDustMaxValue)
+    this.funding.delete(psbt)
     if (addChange) {
       psbt.addOutput({
         // Fall back to the first funding input's address when every derived
@@ -350,7 +351,6 @@ export class PowPegSDK {
       psbt.txInputs.length === expectedInputCount && psbt.txOutputs.length === expectedOutputCount,
       `Funded PSBT structure mismatch: expected ${expectedInputCount} inputs and ${expectedOutputCount} outputs, got ${psbt.txInputs.length} and ${psbt.txOutputs.length}.`,
     )
-    this.funding.delete(psbt)
     return { psbt, inputs, transactions: hexTransactions, fee: totalFee }
   }
 

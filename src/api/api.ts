@@ -22,7 +22,6 @@ export class ApiService implements BitcoinDataSource {
     MAIN: 'https://api.2wp.rootstock.io',
     TEST: 'https://api.2wp.testnet.rootstock.io',
   }
-  private readonly maxFeeRateSatPerByte = 1000
   private feeLevelBlocks = {
     slow: 5,
     average: 3,
@@ -30,7 +29,7 @@ export class ApiService implements BitcoinDataSource {
   }
   private api: AxiosInstance
 
-  constructor(network: Network, apiUrl?: string) {
+  constructor(network: Network, apiUrl?: string, private readonly maxFeeRateSatPerByte = 1000) {
     this.api = axios.create({ baseURL: apiUrl ?? this.apiUrls[network] })
   }
 

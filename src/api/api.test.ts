@@ -83,6 +83,14 @@ describe('ApiService', () => {
 
       await expect(apiService.getFeeRate('fast')).rejects.toThrow(APIError)
     })
+
+    it('should honor a custom maxFeeRateSatPerByte passed to the constructor', async () => {
+      const customApiService = new ApiService('TEST', undefined, 2000)
+      mockGet.mockResolvedValue({ data: { amount: '0.015' } }) // 1500 sat/B
+
+      await expect(customApiService.getFeeRate('fast')).resolves.toBe(1500)
+      await expect(apiService.getFeeRate('fast')).rejects.toThrow(APIError)
+    })
   })
 
   describe('getOutputs', () => {
