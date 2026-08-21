@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { Psbt } from 'bitcoinjs-lib'
 import { PowPegSDK } from './powpeg'
 import type { BitcoinSigner, BitcoinDataSource } from '../types'
-import { AmountBelowMinError, NotEnoughFundsError, InvalidAddressError, FederationAddressError } from '../errors'
+import { AmountBelowMinError, NotEnoughFundsError, InvalidAddressError, FederationAddressError, InvalidFeeRateError } from '../errors'
 import { ethers } from '@rsksmart/bridges-core-sdk'
 import { TxType, PegoutStatuses, PeginStatuses } from '../types'
 
@@ -574,6 +574,37 @@ describe('sdk', () => {
 
       // one input selected, so the estimate reflects exactly one input's cost
       expect(estimatedFee).toBe(expectedBaseFee + expectedFeePerInput)
+    })
+  })
+
+  describe('fee rate validation', () => {
+    const fundableUtxo = (txid: string) => ({ address: btcAddresses[1], txid, vout: 0, amount: 2_000_000n })
+
+    it.each([0, -5, 1.5, NaN])('should reject a fee rate of %p from the data source', async (feeRate) => {
+      mockedDataSource.getFeeRate.mockReturnValueOnce(feeRate)
+      const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [fundableUtxo(`invalid-rate-${feeRate}`)])
+
+      await expect(sdk.fundPegin(psbt, 'average')).rejects.toThrowError(InvalidFeeRateError)
+    })
+
+    it('should reject a fee rate above the configured bound', async () => {
+      mockedDataSource.getFeeRate.mockReturnValueOnce(1001)
+      const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [fundableUtxo('above-bound')])
+
+      await expect(sdk.fundPegin(psbt, 'average')).rejects.toThrowError(InvalidFeeRateError)
+    })
+
+    it('should reject a fee disproportionate to the amount being sent, even at an in-bounds rate', async () => {
+      mockedDataSource.getFeeRate.mockReturnValueOnce(1000)
+      const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [fundableUtxo('disproportionate-fee')])
+
+      await expect(sdk.fundPegin(psbt, 'average')).rejects.toThrowError(InvalidFeeRateError)
+    })
+
+    it('should reject an out-of-bounds fee rate passed explicitly to fundPegin, bypassing the data source', async () => {
+      const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [fundableUtxo('explicit-rate-bypass')])
+
+      await expect(sdk.fundPegin(psbt, 'average', undefined, 1001)).rejects.toThrowError(InvalidFeeRateError)
     })
   })
 

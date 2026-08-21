@@ -46,3 +46,11 @@ export class InvalidAddressError extends Error {
     this.invalidAddresses = invalidAddresses
   }
 }
+
+/** Thrown when a fee rate from the configured BitcoinDataSource is missing, non-numeric, non-positive, exceeds the configured bound, or produces a fee disproportionate to the amount being sent. */
+export class InvalidFeeRateError extends Error {
+  constructor(message?: string) {
+    super(message)
+    this.name = 'InvalidFeeRateError'
+  }
+}

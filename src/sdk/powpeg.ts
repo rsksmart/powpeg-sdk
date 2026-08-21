@@ -39,6 +39,8 @@ export class PowPegSDK {
    * @param {string} apiUrl - The URL of the API to use. If not provided, it will default to the production 2WP API URL for the specified network and use it as BitcoinDataSource.
    * @param {number} maxBundleSize - The maximum number of addresses to ask for while creating a peg-in transaction. Defaults to 10.
    * @param {number} burnDustValue - The value in satoshis to consider as dust to burn. Defaults to 2000.
+   * @param {number} maxFeeRateSatPerByte - Upper bound, in sat/B, for a fee rate coming from the configured BitcoinDataSource. Defaults to 1000.
+   * @param {number} maxFeeToAmountRatio - Upper bound for the ratio of total fee to peg-in amount. Defaults to 0.5.
    */
   constructor(
     private _bitcoinSigner: BitcoinSigner | null,
@@ -48,6 +50,8 @@ export class PowPegSDK {
     apiUrl?: string,
     private maxBundleSize = 10,
     private burnDustValue = 2000,
+    private maxFeeRateSatPerByte = 1000,
+    private maxFeeToAmountRatio = 0.5,
   ) {
     this.btcNetworkConfig = networks[network]
     this.rskProvider = new ethers.providers.JsonRpcProvider(rpcProviderUrl ?? this.publicNodes[network])
@@ -188,7 +192,7 @@ export class PowPegSDK {
    * @returns {Promise<number>} The estimated total fee in satoshis.
    */
   async estimatePeginFee(amount: bigint, feeLevel: FeeLevel = 'fast', utxos?: Utxo[]) {
-    const feeRate = await this.bitcoinDataSource.getFeeRate(feeLevel)
+    const feeRate = await this.getValidatedFeeRate(feeLevel)
     if (utxos) {
       const { totalFee } = await this.calculateFeeAndSelectedInputs(amount, utxos, feeRate)
       return totalFee
@@ -260,6 +264,18 @@ export class PowPegSDK {
     }
   }
 
+  private validateFeeRate(feeRate: number): number {
+    if (!Number.isInteger(feeRate) || feeRate <= 0 || feeRate > this.maxFeeRateSatPerByte) {
+      throw new sdkErrors.InvalidFeeRateError(`Implausible fee rate: ${feeRate}`)
+    }
+    return feeRate
+  }
+
+  private async getValidatedFeeRate(feeLevel: FeeLevel): Promise<number> {
+    const feeRate = await this.bitcoinDataSource.getFeeRate(feeLevel)
+    return this.validateFeeRate(feeRate)
+  }
+
   private async calculatePeginFee(amount: bigint, feeRate: number) {
     this.validatePeginAmount(amount)
     const txSize = this.txHeaderSizeInBytes + this.txOutputSizeInBytes * this.pegInOutputs
@@ -275,6 +291,9 @@ export class PowPegSDK {
       throw new sdkErrors.NotEnoughFundsError(`${rest} satoshis needed to cover the requested amount.`)
     }
     const totalFee = baseFee + feePerInput * inputs.length
+    if (totalFee > Number(amount) * this.maxFeeToAmountRatio) {
+      throw new sdkErrors.InvalidFeeRateError(`Fee ${totalFee} sat is disproportionate to the ${amount} sat being sent.`)
+    }
     return { inputs, change: Math.abs(rest), totalFee }
   }
 
@@ -282,16 +301,17 @@ export class PowPegSDK {
    * Adds funding inputs (and a change output, if above the dust threshold) to an existing peg-in PSBT,
    * using the UTXOs previously selected by {@link createPegin} or {@link createAndFundPsbt}.
    * @param {Psbt} psbt - The peg-in PSBT to fund.
-   * @param {FeeLevel} feeLevel - Fee priority level used to look up the current network fee rate. Defaults to `'fast'`.
+   * @param {FeeLevel} feeLevel - Fee priority level used to look up the current network fee rate. Defaults to `'fast'`. Ignored if `feeRate` is provided.
    * @param {bigint} [value] - Amount being sent, in satoshis. Defaults to the PSBT's second output value.
+   * @param {number} [feeRate] - Fee rate, in sat/B, to fund with. When omitted, a fresh rate is fetched and validated; pass the value returned by {@link estimatePeginFee}'s underlying rate to fund at the same rate that was quoted.
    * @returns {Promise<UnsignedPegin>} The funded PSBT along with its inputs, their raw transactions, and the total fee.
    */
-  async fundPegin(psbt: Psbt, feeLevel: FeeLevel = 'fast', value?: bigint) {
+  async fundPegin(psbt: Psbt, feeLevel: FeeLevel = 'fast', value?: bigint, feeRate?: number) {
     const funding = this.funding.get(psbt)
     assertTruthy(funding, 'No funding context found for this PSBT. Create it with createPegin or createAndFundPsbt first.')
     const amount = value ?? BigInt(psbt.txOutputs[1].value)
-    const feeRate = await this.bitcoinDataSource.getFeeRate(feeLevel)
-    const { inputs, change, totalFee } = await this.calculateFeeAndSelectedInputs(amount, funding.utxos, feeRate)
+    const resolvedFeeRate = feeRate !== undefined ? this.validateFeeRate(feeRate) : await this.getValidatedFeeRate(feeLevel)
+    const { inputs, change, totalFee } = await this.calculateFeeAndSelectedInputs(amount, funding.utxos, resolvedFeeRate)
     // Fetch all external data before the first PSBT mutation
     const hexTransactions = await Promise.all(inputs.map((input) => this.bitcoinDataSource.getTxHex(input.txid)))
     const initialInputCount = psbt.txInputs.length
