@@ -51,6 +51,10 @@ pnpm add @rsksmart/powpeg-sdk
 | `network` | `'MAIN'` or `'TEST'` — selects Bitcoin network params and address validation rules | required |
 | `rpcProviderUrl` | Rootstock JSON-RPC endpoint used to read the bridge precompile and send peg-outs | RSK public node for the given network (`https://public-node.rsk.co` / `https://public-node.testnet.rsk.co`) |
 | `apiUrl` | 2WP API used as the default `BitcoinDataSource` (fee rates, UTXOs, tx broadcast, tx status) when no custom `BitcoinDataSource` is supplied | production 2WP API for the given network (`https://api.2wp.rootstock.io` / `https://api.2wp.testnet.rootstock.io`) |
+| `maxBundleSize` | Number of addresses to derive per `BitcoinSigner` call while creating a peg-in | `10` |
+| `burnDustValue` | Change amount, in satoshis, below which it's dropped into the fee instead of added as an output | `2000` |
+| `maxFeeRateSatPerByte` | Upper bound, in sat/B, for a fee rate coming from the configured `BitcoinDataSource`; a higher value throws `InvalidFeeRateError` | `1000` |
+| `maxFeeToAmountRatio` | Upper bound for the ratio of total fee to peg-in amount; a higher ratio throws `InvalidFeeRateError` | `0.5` |
 
 ## External dependencies
 

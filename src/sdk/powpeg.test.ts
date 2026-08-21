@@ -463,6 +463,16 @@ describe('sdk', () => {
       expect(funded.psbt.txOutputs).toHaveLength(outputCountBefore + 1)
     })
 
+    it('should leave the PSBT unmodified when a UTXO references a vout that does not exist on its fetched transaction', async () => {
+      const utxo = { address: btcAddresses[1], txid: '4'.repeat(64), vout: 5, amount: 2_000_000n }
+      const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [utxo])
+      const outputCountBefore = psbt.txOutputs.length
+
+      await expect(sdk.fundPegin(psbt, 'average')).rejects.toThrow('was not found in the fetched transaction')
+      expect(psbt.txOutputs).toHaveLength(outputCountBefore)
+      expect(psbt.txInputs).toHaveLength(0)
+    })
+
     it('should keep a PSBT bound to the signer active when it was created, even if the instance-level signer changes before signing', async () => {
       const changeAddressA = 'mChangeAddressSignerA00000000000000'
       const changeAddressB = 'mChangeAddressSignerB00000000000000'

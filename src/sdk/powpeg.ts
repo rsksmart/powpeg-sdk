@@ -306,7 +306,7 @@ export class PowPegSDK {
    * @param {Psbt} psbt - The peg-in PSBT to fund.
    * @param {FeeLevel} feeLevel - Fee priority level used to look up the current network fee rate. Defaults to `'fast'`. Ignored if `feeRate` is provided.
    * @param {bigint} [value] - Amount being sent, in satoshis. Defaults to the PSBT's second output value.
-   * @param {number} [feeRate] - Fee rate, in sat/B, to fund with. When omitted, a fresh rate is fetched and validated; pass the value returned by {@link estimatePeginFee}'s underlying rate to fund at the same rate that was quoted.
+   * @param {number} [feeRate] - Fee rate, in sat/B, to fund with. When omitted, a fresh rate is fetched from the configured `BitcoinDataSource` and validated. Pass a rate obtained independently to pin funding to that exact value instead of risking a second, possibly different, fetch.
    * @returns {Promise<UnsignedPegin>} The funded PSBT along with its inputs, their raw transactions, and the total fee.
    */
   async fundPegin(psbt: Psbt, feeLevel: FeeLevel = 'fast', value?: bigint, feeRate?: number) {
@@ -317,7 +317,11 @@ export class PowPegSDK {
     const { inputs, change, totalFee } = await this.calculateFeeAndSelectedInputs(amount, funding.utxos, resolvedFeeRate)
     // Fetch all external data before the first PSBT mutation
     const hexTransactions = await Promise.all(inputs.map((input) => this.bitcoinDataSource.getTxHex(input.txid)))
-    const parsedTransactions = hexTransactions.map((hex) => Transaction.fromHex(hex))
+    const parsedOutputs = hexTransactions.map((hex, index) => {
+      const output = Transaction.fromHex(hex).outs[inputs[index].vout]
+      assertTruthy(output, `UTXO ${inputs[index].txid}:${inputs[index].vout} was not found in the fetched transaction.`)
+      return output
+    })
     const initialInputCount = psbt.txInputs.length
     const initialOutputCount = psbt.txOutputs.length
     const addChange = change > Math.min(this.burnDustValue, this.burnDustMaxValue)
@@ -330,13 +334,13 @@ export class PowPegSDK {
       })
     }
     inputs.forEach((input, index) => {
-      const transaction = parsedTransactions[index]
+      const output = parsedOutputs[index]
       psbt.addInput({
         hash: input.txid,
         index: input.vout,
         witnessUtxo: {
-          script: transaction.outs[input.vout].script,
-          value: transaction.outs[input.vout].value,
+          script: output.script,
+          value: output.value,
         },
       })
     })

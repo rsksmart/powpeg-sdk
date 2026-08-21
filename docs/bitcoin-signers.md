@@ -32,5 +32,5 @@ Following the pattern of the two existing implementations:
 
 1. Create a new file under `src/bitcoin-signers/<name>/<name>.ts` implementing `BitcoinSigner`.
 2. Keep vendor SDK/transport specifics (e.g. a hardware wallet's connection library) private to the class; expose only what the `BitcoinSigner` contract requires plus any signer-specific setup (e.g. an async `init` factory, as both existing signers do, if construction needs to await a connection).
-3. Pass an instance to `PowPegSDK`'s constructor (as `_bitcoinSigner`) or to `createAndFundPegin(...)`'s `signer` argument.
+3. Pass an instance to `PowPegSDK`'s constructor (as `_bitcoinSigner`), to `createAndFundPegin(...)`'s `signer` argument, or to `createAndFundPsbt(...)`'s `signer` argument. Whichever PSBT-creating method is used, `signAndBroadcastPegin` signs with the signer bound to that specific PSBT — a PSBT created without one cannot be signed later by setting the constructor-level signer alone.
 4. Re-export the new class from [`src/index.ts`](../src/index.ts) if it's meant to be part of the public package surface.
