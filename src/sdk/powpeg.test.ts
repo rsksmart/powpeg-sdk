@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { Psbt } from 'bitcoinjs-lib'
+import { Psbt, Transaction } from 'bitcoinjs-lib'
 import { PowPegSDK } from './powpeg'
 import { ApiService } from '../api/api'
 import type { BitcoinSigner, BitcoinDataSource } from '../types'
@@ -14,6 +14,21 @@ const btcAddresses = [
   '2N7eSt5myGSXoiAnqpzu856EwgA8SHg53Lg',
   'tb1qm0f4nu37q8u82txpj0l0cp924836gs2q4m9rdf',
 ]
+
+/**
+ * Builds a real, valid previous transaction and returns its actual hex and txid — `fundPegin`
+ * now verifies both against the UTXO claiming to spend it, so a fixture's txid/value can no
+ * longer be picked independently of the hex it's paired with.
+ */
+function buildFundingTx(value: number, vout = 0, salt = 9): { hex: string, txid: string } {
+  const tx = new Transaction()
+  tx.version = 2
+  tx.addInput(Buffer.alloc(32, salt), 0)
+  for (let i = 0; i <= vout; i++) {
+    tx.addOutput(Buffer.from(`0014${'00'.repeat(20)}`, 'hex'), i === vout ? value : 1_000)
+  }
+  return { hex: tx.toHex(), txid: tx.getId() }
+}
 
 const rskAddresses = [
   '0x8c2f0abf2b1c4d4f7f5b6e3c3f2a6b7f7c7c1d9d',
@@ -121,8 +136,9 @@ describe('sdk', () => {
     mockedDataSource.getAddressDetails
       .mockResolvedValueOnce({ address: btcAddresses[1], balance: 1_000_000, txCount: 1 })
       .mockResolvedValueOnce({ address: btcAddresses[2], balance: 0, txCount: 1 })
-    mockedDataSource.getOutputs.mockResolvedValue([{ address: btcAddresses[1], amount: 1_000_000n, txid: '7309875224b1630ec4470b4d808243022f295a5595a1f32b1eb640cb2fea773e', vout: 0 }])
-    mockedDataSource.getTxHex.mockResolvedValue('0200000001a2399abede23d11581f898eaa3b900b5fe09b8e7366bfb362e42173123fdb188000000006b483045022100836f7eb5a993d86fab93397c3cbd000b5d05fccbfa0921e5e3262b810f0085f00220123a465b2abfb73a6d555087312482b8292c5d170e087244b1130084b1be623c0121033b0017bbeced25a65c3f4e18ac49183fbbef9a2c8215a6f48ca59809cd7fd085ffffffff02af195203000000001976a9141f36d1d36d0bf2d279311db70c5b17faca75e0bb88ac0000000000000000536a4c5048454d4901007084170022b6d196534385ea12387b7e0bcfe929911662add4acf95b048323eb3c0dc549f6f233c90333424e8250a29d4f23eb51b6b0a9d01f11b067b0419aa8ad235794fc699814950d1a063a00')
+    const fundingTx = buildFundingTx(1_000_000)
+    mockedDataSource.getOutputs.mockResolvedValue([{ address: btcAddresses[1], amount: 1_000_000n, txid: fundingTx.txid, vout: 0 }])
+    mockedDataSource.getTxHex.mockResolvedValue(fundingTx.hex)
     const psbt = await sdk.createPegin(500_000n, rskAddresses[0])
     const fundedPsbt = await sdk.fundPegin(psbt, 'average')
 
@@ -360,11 +376,11 @@ describe('sdk', () => {
       mockedDataSource.getAddressDetails
         .mockResolvedValueOnce({ address: btcAddresses[1], balance: 0, txCount: 0 })
         .mockResolvedValueOnce({ address: btcAddresses[2], balance: 0, txCount: 0 })
-      const txHex = '0200000001a2399abede23d11581f898eaa3b900b5fe09b8e7366bfb362e42173123fdb188000000006b483045022100836f7eb5a993d86fab93397c3cbd000b5d05fccbfa0921e5e3262b810f0085f00220123a465b2abfb73a6d555087312482b8292c5d170e087244b1130084b1be623c0121033b0017bbeced25a65c3f4e18ac49183fbbef9a2c8215a6f48ca59809cd7fd085ffffffff02af195203000000001976a9141f36d1d36d0bf2d279311db70c5b17faca75e0bb88ac0000000000000000536a4c5048454d4901007084170022b6d196534385ea12387b7e0bcfe929911662add4acf95b048323eb3c0dc549f6f233c90333424e8250a29d4f23eb51b6b0a9d01f11b067b0419aa8ad235794fc699814950d1a063a00'
+      const fundingTx = buildFundingTx(1_000_000)
       const selectedUtxos = [
-        { address: btcAddresses[0], txid: '7309875224b1630ec4470b4d808243022f295a5595a1f32b1eb640cb2fea773e', vout: 0, amount: 1_000_000n },
+        { address: btcAddresses[0], txid: fundingTx.txid, vout: 0, amount: 1_000_000n },
       ]
-      mockedDataSource.getTxHex.mockResolvedValue(txHex)
+      mockedDataSource.getTxHex.mockResolvedValue(fundingTx.hex)
 
       const result = await sdk.createAndFundPegin(500_000n, rskAddresses[0], mockedSigner, 'average', selectedUtxos)
 
@@ -379,8 +395,9 @@ describe('sdk', () => {
       mockedDataSource.getAddressDetails
         .mockResolvedValueOnce({ address: btcAddresses[1], balance: 1_000_000, txCount: 1 })
         .mockResolvedValueOnce({ address: btcAddresses[2], balance: 0, txCount: 1 })
-      mockedDataSource.getOutputs.mockResolvedValue([{ address: btcAddresses[1], amount: 1_000_000n, txid: '7309875224b1630ec4470b4d808243022f295a5595a1f32b1eb640cb2fea773e', vout: 0 }])
-      mockedDataSource.getTxHex.mockResolvedValue('0200000001a2399abede23d11581f898eaa3b900b5fe09b8e7366bfb362e42173123fdb188000000006b483045022100836f7eb5a993d86fab93397c3cbd000b5d05fccbfa0921e5e3262b810f0085f00220123a465b2abfb73a6d555087312482b8292c5d170e087244b1130084b1be623c0121033b0017bbeced25a65c3f4e18ac49183fbbef9a2c8215a6f48ca59809cd7fd085ffffffff02af195203000000001976a9141f36d1d36d0bf2d279311db70c5b17faca75e0bb88ac0000000000000000536a4c5048454d4901007084170022b6d196534385ea12387b7e0bcfe929911662add4acf95b048323eb3c0dc549f6f233c90333424e8250a29d4f23eb51b6b0a9d01f11b067b0419aa8ad235794fc699814950d1a063a00')
+      const fundingTx = buildFundingTx(1_000_000)
+      mockedDataSource.getOutputs.mockResolvedValue([{ address: btcAddresses[1], amount: 1_000_000n, txid: fundingTx.txid, vout: 0 }])
+      mockedDataSource.getTxHex.mockResolvedValue(fundingTx.hex)
 
       const result = await sdk.createAndFundPegin(500_000n, rskAddresses[0], mockedSigner, 'average')
 
@@ -393,20 +410,23 @@ describe('sdk', () => {
   })
 
   describe('funding context isolation', () => {
-    const txHex = '0200000001a2399abede23d11581f898eaa3b900b5fe09b8e7366bfb362e42173123fdb188000000006b483045022100836f7eb5a993d86fab93397c3cbd000b5d05fccbfa0921e5e3262b810f0085f00220123a465b2abfb73a6d555087312482b8292c5d170e087244b1130084b1be623c0121033b0017bbeced25a65c3f4e18ac49183fbbef9a2c8215a6f48ca59809cd7fd085ffffffff02af195203000000001976a9141f36d1d36d0bf2d279311db70c5b17faca75e0bb88ac0000000000000000536a4c5048454d4901007084170022b6d196534385ea12387b7e0bcfe929911662add4acf95b048323eb3c0dc549f6f233c90333424e8250a29d4f23eb51b6b0a9d01f11b067b0419aa8ad235794fc699814950d1a063a00'
+    const fundingTx = buildFundingTx(2_000_000)
 
     beforeEach(() => {
       vi.clearAllMocks()
-      mockedDataSource.getTxHex.mockResolvedValue(txHex)
+      mockedDataSource.getTxHex.mockResolvedValue(fundingTx.hex)
     })
 
     it('should fund each PSBT with its own UTXOs when peg-ins are created interleaved', async () => {
-      const utxoA = { address: btcAddresses[1], txid: 'a'.repeat(64), vout: 0, amount: 2_000_000n }
-      const utxoB = { address: btcAddresses[2], txid: 'b'.repeat(64), vout: 0, amount: 2_000_000n }
+      const txA = buildFundingTx(2_000_000, 0, 1)
+      const txB = buildFundingTx(2_000_000, 0, 2)
+      const utxoA = { address: btcAddresses[1], txid: txA.txid, vout: 0, amount: 2_000_000n }
+      const utxoB = { address: btcAddresses[2], txid: txB.txid, vout: 0, amount: 2_000_000n }
 
       const psbtA = await sdk.createPegin(500_000n, rskAddresses[0], [utxoA])
       const psbtB = await sdk.createPegin(500_000n, rskAddresses[0], [utxoB])
 
+      mockedDataSource.getTxHex.mockResolvedValueOnce(txA.hex).mockResolvedValueOnce(txB.hex)
       const fundedA = await sdk.fundPegin(psbtA, 'average')
       const fundedB = await sdk.fundPegin(psbtB, 'average')
 
@@ -417,10 +437,11 @@ describe('sdk', () => {
     })
 
     it('should not reuse a previous peg-in change address in createAndFundPsbt', async () => {
+      // Never funded (only createPegin runs on it), so this UTXO is never checked against a fetched transaction.
       const previousPeginUtxo = { address: btcAddresses[1], txid: 'a'.repeat(64), vout: 0, amount: 2_000_000n }
       await sdk.createPegin(500_000n, rskAddresses[0], [previousPeginUtxo])
 
-      const psbtUtxo = { address: btcAddresses[4], txid: 'b'.repeat(64), vout: 0, amount: 2_000_000n }
+      const psbtUtxo = { address: btcAddresses[4], txid: fundingTx.txid, vout: 0, amount: 2_000_000n }
       const { psbt } = await sdk.createAndFundPsbt(500_000n, btcAddresses[3], [psbtUtxo], 'average')
 
       const changeOutput = psbt.txOutputs[1]
@@ -433,7 +454,7 @@ describe('sdk', () => {
     })
 
     it('should fail to fund the same PSBT twice', async () => {
-      const utxo = { address: btcAddresses[1], txid: 'a'.repeat(64), vout: 0, amount: 2_000_000n }
+      const utxo = { address: btcAddresses[1], txid: fundingTx.txid, vout: 0, amount: 2_000_000n }
       const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [utxo])
 
       await expect(sdk.fundPegin(psbt, 'average')).resolves.toBeDefined()
@@ -441,7 +462,7 @@ describe('sdk', () => {
     })
 
     it('should leave the PSBT unmodified when funding fails, allowing a retry', async () => {
-      const utxo = { address: btcAddresses[1], txid: 'a'.repeat(64), vout: 0, amount: 2_000_000n }
+      const utxo = { address: btcAddresses[1], txid: fundingTx.txid, vout: 0, amount: 2_000_000n }
       const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [utxo])
       const outputCountBefore = psbt.txOutputs.length
 
@@ -456,7 +477,7 @@ describe('sdk', () => {
     })
 
     it('should leave the PSBT unmodified when a fetched transaction fails to parse, allowing a retry', async () => {
-      const utxo = { address: btcAddresses[1], txid: '3'.repeat(64), vout: 0, amount: 2_000_000n }
+      const utxo = { address: btcAddresses[1], txid: fundingTx.txid, vout: 0, amount: 2_000_000n }
       const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [utxo])
       const outputCountBefore = psbt.txOutputs.length
 
@@ -471,7 +492,7 @@ describe('sdk', () => {
     })
 
     it('should leave the PSBT unmodified when a UTXO references a vout that does not exist on its fetched transaction', async () => {
-      const utxo = { address: btcAddresses[1], txid: '4'.repeat(64), vout: 5, amount: 2_000_000n }
+      const utxo = { address: btcAddresses[1], txid: fundingTx.txid, vout: 5, amount: 2_000_000n }
       const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [utxo])
       const outputCountBefore = psbt.txOutputs.length
 
@@ -480,11 +501,34 @@ describe('sdk', () => {
       expect(psbt.txInputs).toHaveLength(0)
     })
 
-    it('should block a retry after a mid-mutation failure instead of allowing it to double-mutate the PSBT', async () => {
-      const utxo = { address: btcAddresses[1], txid: 'not-a-valid-txid', vout: 0, amount: 2_000_000n }
+    it('should reject a UTXO whose fetched transaction is not actually the one that was requested', async () => {
+      // A data source (hostile, or just wrong) that hands back an unrelated transaction —
+      // e.g. this could be used to trick a Ledger signer into trusting the wrong prevout.
+      const wrongTx = buildFundingTx(2_000_000, 0, 99)
+      const utxo = { address: btcAddresses[1], txid: fundingTx.txid, vout: 0, amount: 2_000_000n }
       const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [utxo])
 
-      await expect(sdk.fundPegin(psbt, 'average')).rejects.toThrow()
+      mockedDataSource.getTxHex.mockResolvedValueOnce(wrongTx.hex)
+      await expect(sdk.fundPegin(psbt, 'average')).rejects.toThrow('does not match the requested txid')
+    })
+
+    it('should reject a UTXO whose fetched transaction reports a different value than claimed', async () => {
+      const mismatchedValueTx = buildFundingTx(999_999, 0, 30)
+      const utxo = { address: btcAddresses[1], txid: mismatchedValueTx.txid, vout: 0, amount: 2_000_000n }
+      const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [utxo])
+
+      mockedDataSource.getTxHex.mockResolvedValueOnce(mismatchedValueTx.hex)
+      await expect(sdk.fundPegin(psbt, 'average')).rejects.toThrow('value mismatch')
+    })
+
+    it('should block a retry after a mid-mutation failure instead of allowing it to double-mutate the PSBT', async () => {
+      // Two UTXOs sharing the same outpoint — the kind of duplicate a hostile or buggy data
+      // source could return — so the second `addInput` is what fails, after the funding
+      // context has already been deleted for this mutation attempt.
+      const utxo = { address: btcAddresses[1], txid: fundingTx.txid, vout: 0, amount: 2_000_000n }
+      const psbt = await sdk.createPegin(3_500_000n, rskAddresses[0], [utxo, { ...utxo }])
+
+      await expect(sdk.fundPegin(psbt, 'average')).rejects.toThrow('Duplicate input')
       await expect(sdk.fundPegin(psbt, 'average')).rejects.toThrow('No funding context')
     })
 
@@ -525,7 +569,7 @@ describe('sdk', () => {
         getChangeAddresses: vi.fn(),
         signTransaction: vi.fn().mockResolvedValue('signed-by-psbt-signer'),
       } satisfies BitcoinSigner
-      const utxo = { address: btcAddresses[1], txid: '1'.repeat(64), vout: 0, amount: 2_000_000n }
+      const utxo = { address: btcAddresses[1], txid: fundingTx.txid, vout: 0, amount: 2_000_000n }
 
       const { psbt, inputs, transactions } = await sdk.createAndFundPsbt(500_000n, btcAddresses[2], [utxo], 'average', psbtSigner)
       await sdk.signAndBroadcastPegin(psbt, inputs, transactions)
@@ -535,7 +579,7 @@ describe('sdk', () => {
     })
 
     it('should fail to sign a PSBT that has no signer bound to it', async () => {
-      const utxo = { address: btcAddresses[1], txid: '2'.repeat(64), vout: 0, amount: 2_000_000n }
+      const utxo = { address: btcAddresses[1], txid: fundingTx.txid, vout: 0, amount: 2_000_000n }
 
       const { psbt, inputs, transactions } = await sdk.createAndFundPsbt(500_000n, btcAddresses[2], [utxo], 'average')
 
@@ -544,7 +588,7 @@ describe('sdk', () => {
   })
 
   describe('BitcoinDataSource address integrity', () => {
-    const txHex = '0200000001a2399abede23d11581f898eaa3b900b5fe09b8e7366bfb362e42173123fdb188000000006b483045022100836f7eb5a993d86fab93397c3cbd000b5d05fccbfa0921e5e3262b810f0085f00220123a465b2abfb73a6d555087312482b8292c5d170e087244b1130084b1be623c0121033b0017bbeced25a65c3f4e18ac49183fbbef9a2c8215a6f48ca59809cd7fd085ffffffff02af195203000000001976a9141f36d1d36d0bf2d279311db70c5b17faca75e0bb88ac0000000000000000536a4c5048454d4901007084170022b6d196534385ea12387b7e0bcfe929911662add4acf95b048323eb3c0dc549f6f233c90333424e8250a29d4f23eb51b6b0a9d01f11b067b0419aa8ad235794fc699814950d1a063a00'
+    const fundingTx = buildFundingTx(2_000_000, 0, 14)
 
     it('should keep the address it queried for a UTXO, not the one a hostile getOutputs echoes', async () => {
       const attackerAddress = 'mAttackerUtxoAddress00000000000000'
@@ -556,8 +600,8 @@ describe('sdk', () => {
           txCount: address === usedAddress ? 1 : 0,
         })),
         getFeeRate: vi.fn().mockResolvedValue(mockValues.bitcoinFeeRate),
-        getOutputs: vi.fn().mockResolvedValue([{ address: attackerAddress, txid: 'e'.repeat(64), vout: 0, amount: 2_000_000n }]),
-        getTxHex: vi.fn().mockResolvedValue(txHex),
+        getOutputs: vi.fn().mockResolvedValue([{ address: attackerAddress, txid: fundingTx.txid, vout: 0, amount: 2_000_000n }]),
+        getTxHex: vi.fn().mockResolvedValue(fundingTx.hex),
         broadcast: vi.fn(),
       } satisfies BitcoinDataSource
       const hostileSdk = new PowPegSDK(mockedSigner, hostileDataSource, 'TEST')
@@ -576,11 +620,11 @@ describe('sdk', () => {
         getAddressDetails: vi.fn().mockResolvedValue({ address: attackerAddress, balance: 0, txCount: 0 }),
         getFeeRate: vi.fn().mockResolvedValue(mockValues.bitcoinFeeRate),
         getOutputs: vi.fn().mockResolvedValue([]),
-        getTxHex: vi.fn().mockResolvedValue(txHex),
+        getTxHex: vi.fn().mockResolvedValue(fundingTx.hex),
         broadcast: vi.fn(),
       } satisfies BitcoinDataSource
       const hostileSdk = new PowPegSDK(mockedSigner, hostileDataSource, 'TEST')
-      const utxo = { address: btcAddresses[1], txid: 'f'.repeat(64), vout: 0, amount: 2_000_000n }
+      const utxo = { address: btcAddresses[1], txid: fundingTx.txid, vout: 0, amount: 2_000_000n }
 
       const psbt = await hostileSdk.createPegin(500_000n, rskAddresses[0], [utxo])
       const funded = await hostileSdk.fundPegin(psbt, 'average')
@@ -787,8 +831,8 @@ describe('sdk', () => {
     })
 
     it('should handle auto-selection with duplicate UTXOs without throwing error', async () => {
-      const duplicateUtxo = { address: btcAddresses[1], txid: '7309875224b1630ec4470b4d808243022f295a5595a1f32b1eb640cb2fea773e', vout: 0, amount: 1_000_000n }
-      const txHex = '0200000001a2399abede23d11581f898eaa3b900b5fe09b8e7366bfb362e42173123fdb188000000006b483045022100836f7eb5a993d86fab93397c3cbd000b5d05fccbfa0921e5e3262b810f0085f00220123a465b2abfb73a6d555087312482b8292c5d170e087244b1130084b1be623c0121033b0017bbeced25a65c3f4e18ac49183fbbef9a2c8215a6f48ca59809cd7fd085ffffffff02af195203000000001976a9141f36d1d36d0bf2d279311db70c5b17faca75e0bb88ac0000000000000000536a4c5048454d4901007084170022b6d196534385ea12387b7e0bcfe929911662add4acf95b048323eb3c0dc549f6f233c90333424e8250a29d4f23eb51b6b0a9d01f11b067b0419aa8ad235794fc699814950d1a063a00'
+      const fundingTx = buildFundingTx(1_000_000, 0, 21)
+      const duplicateUtxo = { address: btcAddresses[1], txid: fundingTx.txid, vout: 0, amount: 1_000_000n }
 
       mockedDataSource.getAddressDetails
         .mockResolvedValueOnce({ address: btcAddresses[1], balance: 1_000_000, txCount: 1 })
@@ -798,7 +842,7 @@ describe('sdk', () => {
         .mockResolvedValueOnce([duplicateUtxo])
         .mockResolvedValueOnce([duplicateUtxo])
 
-      mockedDataSource.getTxHex.mockResolvedValue(txHex)
+      mockedDataSource.getTxHex.mockResolvedValue(fundingTx.hex)
 
       const result = await sdk.createAndFundPegin(500_000n, rskAddresses[0], mockedSigner, 'average')
 
@@ -810,9 +854,9 @@ describe('sdk', () => {
     })
 
     it('should create PSBT with no duplicate inputs when API returns duplicates', async () => {
-      const duplicateUtxo = { address: btcAddresses[1], txid: '7309875224b1630ec4470b4d808243022f295a5595a1f32b1eb640cb2fea773e', vout: 0, amount: 1_000_000n }
+      const fundingTx = buildFundingTx(1_000_000, 0, 22)
+      const duplicateUtxo = { address: btcAddresses[1], txid: fundingTx.txid, vout: 0, amount: 1_000_000n }
       const uniqueUtxo = { address: btcAddresses[2], txid: 'a2399abede23d11581f898eaa3b900b5fe09b8e7366bfb362e42173123fdb188', vout: 0, amount: 800_000n }
-      const txHex = '0200000001a2399abede23d11581f898eaa3b900b5fe09b8e7366bfb362e42173123fdb188000000006b483045022100836f7eb5a993d86fab93397c3cbd000b5d05fccbfa0921e5e3262b810f0085f00220123a465b2abfb73a6d555087312482b8292c5d170e087244b1130084b1be623c0121033b0017bbeced25a65c3f4e18ac49183fbbef9a2c8215a6f48ca59809cd7fd085ffffffff02af195203000000001976a9141f36d1d36d0bf2d279311db70c5b17faca75e0bb88ac0000000000000000536a4c5048454d4901007084170022b6d196534385ea12387b7e0bcfe929911662add4acf95b048323eb3c0dc549f6f233c90333424e8250a29d4f23eb51b6b0a9d01f11b067b0419aa8ad235794fc699814950d1a063a00'
 
       mockedDataSource.getAddressDetails
         .mockResolvedValueOnce({ address: btcAddresses[1], balance: 1_000_000, txCount: 1 })
@@ -822,7 +866,7 @@ describe('sdk', () => {
         .mockResolvedValueOnce([duplicateUtxo, uniqueUtxo])
         .mockResolvedValueOnce([duplicateUtxo])
 
-      mockedDataSource.getTxHex.mockResolvedValue(txHex)
+      mockedDataSource.getTxHex.mockResolvedValue(fundingTx.hex)
 
       const result = await sdk.createAndFundPegin(500_000n, rskAddresses[0], mockedSigner, 'average')
 

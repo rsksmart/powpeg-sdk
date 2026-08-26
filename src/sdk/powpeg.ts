@@ -318,8 +318,17 @@ export class PowPegSDK {
     // Fetch all external data before the first PSBT mutation
     const hexTransactions = await Promise.all(inputs.map((input) => this.bitcoinDataSource.getTxHex(input.txid)))
     const parsedOutputs = hexTransactions.map((hex, index) => {
-      const output = Transaction.fromHex(hex).outs[inputs[index].vout]
+      const tx = Transaction.fromHex(hex)
+      assertTruthy(
+        tx.getId() === inputs[index].txid,
+        `Fetched transaction for UTXO ${inputs[index].txid}:${inputs[index].vout} does not match the requested txid (got ${tx.getId()}).`,
+      )
+      const output = tx.outs[inputs[index].vout]
       assertTruthy(output, `UTXO ${inputs[index].txid}:${inputs[index].vout} was not found in the fetched transaction.`)
+      assertTruthy(
+        BigInt(output.value) === inputs[index].amount,
+        `UTXO ${inputs[index].txid}:${inputs[index].vout} value mismatch: fetched transaction reports ${output.value}, expected ${inputs[index].amount}.`,
+      )
       return output
     })
     const initialInputCount = psbt.txInputs.length
