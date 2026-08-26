@@ -210,10 +210,10 @@ export class PowPegSDK {
    * @param {bigint} amount - Amount to peg in, in satoshis.
    * @param {string} recipientAddress - Rootstock address that will receive the pegged-in RBTC.
    * @param {Utxo[]} [selectedUtxos] - UTXOs to fund the transaction with. If omitted, they're derived from the signer's used addresses.
+   * @param {BitcoinSigner} [signer] - Signer to bind this PSBT to. Defaults to the signer configured in the constructor.
    * @returns {Promise<Psbt>} The unsigned, unfunded peg-in PSBT.
    */
-  async createPegin(amount: bigint, recipientAddress: string, selectedUtxos?: Utxo[]) {
-    const signer = this.bitcoinSigner
+  async createPegin(amount: bigint, recipientAddress: string, selectedUtxos?: Utxo[], signer: BitcoinSigner = this.bitcoinSigner) {
     const addresses = await this.getAddressesGroupedByUsage(signer)
     const psbt = new Psbt({ network: this.btcNetworkConfig.lib })
     const refundAddress = addresses.nonChange.unused[0]?.address
@@ -373,9 +373,8 @@ export class PowPegSDK {
    * @returns {Promise<UnsignedPegin>} The funded, unsigned peg-in PSBT along with its inputs, raw transactions, and total fee.
    */
   async createAndFundPegin(amount: bigint, recipientAddress: string, signer: BitcoinSigner, feeLevel: FeeLevel = 'fast', selectedUtxos?: Utxo[]): Promise<UnsignedPegin> {
-    this.bitcoinSigner = signer
     this.validatePeginAmount(amount)
-    const psbt = await this.createPegin(amount, recipientAddress, selectedUtxos)
+    const psbt = await this.createPegin(amount, recipientAddress, selectedUtxos, signer)
     return this.fundPegin(psbt, feeLevel)
   }
 

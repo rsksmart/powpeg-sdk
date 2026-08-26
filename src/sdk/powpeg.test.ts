@@ -563,6 +563,20 @@ describe('sdk', () => {
       expect(signerB.signTransaction).not.toHaveBeenCalled()
     })
 
+    it('should not mutate the instance-level signer as a side effect of createAndFundPegin', async () => {
+      const utxo = { address: btcAddresses[1], txid: fundingTx.txid, vout: 0, amount: 2_000_000n }
+      const otherSigner = {
+        getNonChangeAddresses: vi.fn().mockReturnValue(btcAddresses.slice(1)),
+        getChangeAddresses: vi.fn().mockReturnValue(btcAddresses.slice(0, 1)),
+        signTransaction: vi.fn(),
+      } satisfies BitcoinSigner
+
+      sdk['bitcoinSigner'] = mockedSigner
+      await sdk.createAndFundPegin(500_000n, rskAddresses[0], otherSigner, 'average', [utxo])
+
+      expect(sdk['bitcoinSigner']).toBe(mockedSigner)
+    })
+
     it('should sign a PSBT from createAndFundPsbt with the signer passed to it, not the instance signer', async () => {
       const psbtSigner = {
         getNonChangeAddresses: vi.fn(),
