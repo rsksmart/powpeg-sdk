@@ -370,12 +370,13 @@ export class PowPegSDK {
    * @param {BitcoinSigner} signer - Bitcoin signer used to derive the addresses funding this peg-in.
    * @param {FeeLevel} feeLevel - Fee priority level used to look up the current network fee rate. Defaults to `'fast'`.
    * @param {Utxo[]} [selectedUtxos] - UTXOs to fund the transaction with. If omitted, they're derived from the signer's used addresses.
+   * @param {number} [feeRate] - Fee rate, in sat/B, to fund with. When omitted, a fresh rate is fetched from the configured `BitcoinDataSource` and validated. Pass a rate obtained independently (e.g. from a prior `estimatePeginFee` call) to pin funding to that exact value instead of risking a second, possibly different, fetch.
    * @returns {Promise<UnsignedPegin>} The funded, unsigned peg-in PSBT along with its inputs, raw transactions, and total fee.
    */
-  async createAndFundPegin(amount: bigint, recipientAddress: string, signer: BitcoinSigner, feeLevel: FeeLevel = 'fast', selectedUtxos?: Utxo[]): Promise<UnsignedPegin> {
+  async createAndFundPegin(amount: bigint, recipientAddress: string, signer: BitcoinSigner, feeLevel: FeeLevel = 'fast', selectedUtxos?: Utxo[], feeRate?: number): Promise<UnsignedPegin> {
     this.validatePeginAmount(amount)
     const psbt = await this.createPegin(amount, recipientAddress, selectedUtxos, signer)
-    return this.fundPegin(psbt, feeLevel)
+    return this.fundPegin(psbt, feeLevel, undefined, feeRate)
   }
 
   /**

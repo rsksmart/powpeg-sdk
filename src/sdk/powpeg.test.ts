@@ -758,6 +758,12 @@ describe('sdk', () => {
 
       await expect(sdk.fundPegin(psbt, 'average', undefined, 1001)).rejects.toThrowError(InvalidFeeRateError)
     })
+
+    it('should forward an explicit fee rate from createAndFundPegin down to fundPegin', async () => {
+      await expect(
+        sdk.createAndFundPegin(500_000n, rskAddresses[0], mockedSigner, 'average', [fundableUtxo('createAndFundPegin-rate-bypass')], 1001),
+      ).rejects.toThrowError(InvalidFeeRateError)
+    })
   })
 
   describe('RSK recipient validation', () => {
