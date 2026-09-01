@@ -50,12 +50,16 @@ pnpm add @rsksmart/powpeg-sdk
 | `bitcoinDataSource` | `BitcoinDataSource` used for fee rates, UTXOs, tx broadcast and tx status | `null` — falls back to the built-in `apiUrl`-backed source |
 | `network` | `'MAIN'` or `'TEST'` — selects Bitcoin network params and address validation rules | required |
 | `rpcProviderUrl` | Rootstock JSON-RPC endpoint used to read the bridge precompile and send peg-outs | RSK public node for the given network (`https://public-node.rsk.co` / `https://public-node.testnet.rsk.co`) |
-| `apiUrl` | 2WP API used as the default `BitcoinDataSource` (fee rates, UTXOs, tx broadcast, tx status) when no custom `BitcoinDataSource` is supplied | production 2WP API for the given network (`https://api.2wp.rootstock.io` / `https://api.2wp.testnet.rootstock.io`) |
+| `apiUrl` | 2WP API endpoint. Used as the default `BitcoinDataSource` when no custom one is supplied, and always used for federation-address verification during peg-in creation regardless of `bitcoinDataSource` — see External dependencies below | production 2WP API for the given network (`https://api.2wp.rootstock.io` / `https://api.2wp.testnet.rootstock.io`) |
+| `maxBundleSize` | Number of addresses to derive per `BitcoinSigner` call while creating a peg-in | `10` |
+| `burnDustValue` | Change amount, in satoshis, below which it's dropped into the fee instead of added as an output | `2000` |
+| `maxFeeRateSatPerByte` | Upper bound, in sat/B, for a fee rate coming from the configured `BitcoinDataSource`; a higher value throws `InvalidFeeRateError` | `1000` |
+| `maxFeeToAmountRatio` | Upper bound for the ratio of total fee to peg-in amount; a higher ratio throws `InvalidFeeRateError` | `0.5` |
 
 ## External dependencies
 
 - **Rootstock RPC node** — read via `ethers.providers.JsonRpcProvider`, used for the bridge precompile (`Bridge` in `src/bridge.ts`) and to send peg-out transactions.
-- **2WP API** — the SDK's built-in `BitcoinDataSource` implementation (`src/api/api.ts`); can be replaced with your own `BitcoinDataSource` for fee rates, UTXOs, tx broadcasting and address details.
+- **2WP API** — the SDK's built-in `BitcoinDataSource` implementation (`src/api/api.ts`); the fee-rate/UTXO/broadcast/address-details methods can be replaced with your own `BitcoinDataSource`, but `createPegin` always calls the 2WP API's `/pegin-configuration` endpoint directly (via the internal `ApiService`, independent of `bitcoinDataSource`) to verify the federation address against the Bridge contract — this call cannot be substituted, so the 2WP API stays a required dependency even when every other data source is custom.
 - **Hardware wallets** (only needed if you use the bundled signers — see [`bitcoin-signers.md`](./bitcoin-signers.md)):
   - **Ledger** — via `@ledgerhq/hw-transport-webusb`, requires a browser environment with WebUSB support.
   - **Trezor** — via `@trezor/connect-web`.

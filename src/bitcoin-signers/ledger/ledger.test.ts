@@ -92,4 +92,35 @@ describe('LedgerSigner', () => {
 
     expect(createPaymentSpy).toHaveBeenCalledOnce()
   })
+
+  describe('getChangePath', () => {
+    const recipientAddress = 'tb1qfuk3j0l4qn4uzstc47uwk68kedmjwuucl7avqr'
+    const changeAddress = 'tb1qtanvhhl8ve32tcdxkrsamyy6vq5p62ctdv89l0'
+
+    it("should return the last output's path when it is a device-derived change path", () => {
+      signer['addresses'].set(changeAddress, "m/84'/1'/0'/1/0")
+      const psbt = new Psbt({ network: networks[network].lib })
+      psbt.addOutput({ address: recipientAddress, value: 100_000 })
+      psbt.addOutput({ address: changeAddress, value: 5_000 })
+
+      expect(signer['getChangePath'](psbt)).toBe("m/84'/1'/0'/1/0")
+    })
+
+    it('should not treat a change-path address as the change output unless it is last', () => {
+      signer['addresses'].set(changeAddress, "m/84'/1'/0'/1/1")
+      const psbt = new Psbt({ network: networks[network].lib })
+      psbt.addOutput({ address: changeAddress, value: 100_000 })
+      psbt.addOutput({ address: recipientAddress, value: 5_000 })
+
+      expect(signer['getChangePath'](psbt)).toBeUndefined()
+    })
+
+    it('should return undefined for a single-output transaction', () => {
+      signer['addresses'].set(changeAddress, "m/84'/1'/0'/1/2")
+      const psbt = new Psbt({ network: networks[network].lib })
+      psbt.addOutput({ address: changeAddress, value: 100_000 })
+
+      expect(signer['getChangePath'](psbt)).toBeUndefined()
+    })
+  })
 })

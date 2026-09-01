@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest'
 import TrezorConnect from '@trezor/connect-web'
 import { TrezorSigner } from './trezor'
-import { Psbt } from 'bitcoinjs-lib'
+import { Psbt, payments, networks as bitcoinNetworks } from 'bitcoinjs-lib'
 import type { Utxo } from '../../types'
 
 vi.mock('@trezor/connect-web', () => ({
@@ -117,5 +117,47 @@ describe('TrezorSigner', () => {
         amount: 1000,
       },
     ])
+  })
+
+  describe('getOutputs', () => {
+    const recipientAddress = 'mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn'
+    const changeAddress = 'tb1qm0f4nu37q8u82txpj0l0cp924836gs2q4m9rdf'
+
+    it('should mark only the last output as internal when it is a device-derived change path', () => {
+      trezor['addresses'].set(changeAddress, [84, 1, 0, 1, 0])
+      const psbt = new Psbt({ network: bitcoinNetworks.testnet })
+      const opReturnScript = payments.embed({ data: [Buffer.from('deadbeef', 'hex')] }).output!
+      psbt.addOutput({ script: opReturnScript, value: 0 })
+      psbt.addOutput({ address: recipientAddress, value: 100_000 })
+      psbt.addOutput({ address: changeAddress, value: 5_000 })
+
+      const outputs = trezor['getOutputs'](psbt)
+
+      expect(outputs[0]).toMatchObject({ script_type: 'PAYTOOPRETURN' })
+      expect(outputs[1]).toEqual({ address: recipientAddress, script_type: 'PAYTOADDRESS', amount: 100_000 })
+      expect(outputs[2]).toEqual({ address_n: [84, 1, 0, 1, 0], script_type: 'PAYTOWITNESS', amount: 5_000 })
+    })
+
+    it('should not mark a change-path address as internal unless it is the last output', () => {
+      trezor['addresses'].set(changeAddress, [84, 1, 0, 1, 1])
+      const psbt = new Psbt({ network: bitcoinNetworks.testnet })
+      psbt.addOutput({ address: changeAddress, value: 100_000 })
+      psbt.addOutput({ address: recipientAddress, value: 5_000 })
+
+      const outputs = trezor['getOutputs'](psbt)
+
+      expect(outputs[0]).toEqual({ address: changeAddress, script_type: 'PAYTOADDRESS', amount: 100_000 })
+      expect(outputs[1]).toEqual({ address: recipientAddress, script_type: 'PAYTOADDRESS', amount: 5_000 })
+    })
+
+    it('should not mark a single output as internal even if its path is a change path', () => {
+      trezor['addresses'].set(changeAddress, [84, 1, 0, 1, 2])
+      const psbt = new Psbt({ network: bitcoinNetworks.testnet })
+      psbt.addOutput({ address: changeAddress, value: 100_000 })
+
+      const outputs = trezor['getOutputs'](psbt)
+
+      expect(outputs[0]).toEqual({ address: changeAddress, script_type: 'PAYTOADDRESS', amount: 100_000 })
+    })
   })
 })

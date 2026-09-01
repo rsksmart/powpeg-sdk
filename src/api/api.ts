@@ -29,7 +29,7 @@ export class ApiService implements BitcoinDataSource {
   }
   private api: AxiosInstance
 
-  constructor(network: Network, apiUrl?: string) {
+  constructor(network: Network, apiUrl?: string, private readonly maxFeeRateSatPerByte = 1000) {
     this.api = axios.create({ baseURL: apiUrl ?? this.apiUrls[network] })
   }
 
@@ -53,9 +53,21 @@ export class ApiService implements BitcoinDataSource {
   async getFeeRate(level: FeeLevel): Promise<number> {
     const blocks = this.feeLevelBlocks[level]
     const response = await this.api.get(`/estimate-fee/${blocks}`).catch(this.handleError)
-    // BTC/kB -> sat/B
-    const rate = ethers.utils.parseUnits(response.data.amount, 8).div(1000).toNumber()
-    return rate
+    let satoshisPerKb: ethers.BigNumber
+    try {
+      satoshisPerKb = ethers.utils.parseUnits(String(response.data.amount), 8)
+    }
+    catch {
+      throw new APIError(`Invalid fee rate received: ${response.data.amount}`)
+    }
+    if (satoshisPerKb.lte(0)) {
+      throw new APIError(`Invalid fee rate received: ${response.data.amount}`)
+    }
+    if (satoshisPerKb.gt(this.maxFeeRateSatPerByte * 1000)) {
+      throw new APIError(`Fee rate out of bounds: ${response.data.amount}`)
+    }
+    // BTC/kB -> sat/B, rounded up
+    return satoshisPerKb.add(999).div(1000).toNumber()
   }
 
   async getTxHex(txId: string): Promise<string> {
@@ -66,7 +78,7 @@ export class ApiService implements BitcoinDataSource {
   async getOutputs(address: string): Promise<Utxo[]> {
     const response = await this.api.post<UtxoResponse2WP>('/utxo', { addressList: [address] }).catch(this.handleError)
     const { data: utxos } = response.data
-    return utxos.map(({ address, txid, vout, satoshis }) => ({
+    return utxos.map(({ txid, vout, satoshis }) => ({
       address,
       txid,
       amount: BigInt(satoshis),
@@ -78,7 +90,7 @@ export class ApiService implements BitcoinDataSource {
     const response = await this.api.post('/addresses-info', { addressList: [address] }).catch(this.handleError)
     const [details] = response.data.addressesInfo
     return {
-      address: details.address,
+      address,
       balance: details.balance,
       txCount: details.txs,
     }
@@ -91,6 +103,11 @@ export class ApiService implements BitcoinDataSource {
 
   async getTransactionStatus<T extends TxType>(txHash: string, txType: T): Promise<Extract<StatusData, { type: T }>> {
     const response = await this.api.get(`/tx-status-by-type/${txHash}/${txType}`).catch(this.handleError)
+    return response.data
+  }
+
+  async getPeginConfiguration(): Promise<{ minValue: number, maxValue: number, federationAddress: string, btcConfirmations: number }> {
+    const response = await this.api.get('/pegin-configuration').catch(this.handleError)
     return response.data
   }
 
