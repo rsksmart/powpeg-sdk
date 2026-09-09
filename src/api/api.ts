@@ -17,6 +17,36 @@ type UtxoResponse2WP = {
   }[]
 }
 
+function firstNonEmptyString(candidates: unknown[]): string | undefined {
+  return candidates.find((candidate): candidate is string => typeof candidate === 'string' && candidate.length > 0)
+}
+
+/** Some endpoints answer with a JSON document serialized into the message field; one level is unwrapped so the message reads as text. */
+function unwrapJsonMessage(message: string): string {
+  if (!message.startsWith('{')) {
+    return message
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(message)
+  }
+  catch {
+    return message
+  }
+  return firstNonEmptyString([
+    (parsed as { error?: unknown })?.error,
+    (parsed as { message?: unknown })?.message,
+  ]) ?? message
+}
+
+function getErrorMessage(data: unknown): string {
+  const message = firstNonEmptyString([
+    (data as { error?: { message?: unknown } })?.error?.message,
+    (data as { message?: unknown })?.message,
+  ])
+  return message ? unwrapJsonMessage(message) : 'Server error'
+}
+
 export class ApiService implements BitcoinDataSource {
   private apiUrls: Record<Network, string> = {
     MAIN: 'https://api.2wp.rootstock.io',
@@ -37,8 +67,7 @@ export class ApiService implements BitcoinDataSource {
     if (axios.isAxiosError(error)) {
       if (error.response) {
         const { status, data } = error.response
-        const message = data?.message || 'Server error'
-        throw new APIError(message, status, data)
+        throw new APIError(getErrorMessage(data), status, data)
       }
       if (error.request) {
         throw new APIError('No response from server')

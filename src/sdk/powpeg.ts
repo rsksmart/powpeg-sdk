@@ -405,7 +405,11 @@ export class PowPegSDK {
   private async signPegin(psbt: Psbt, inputs?: Utxo[], transactions?: string[]): Promise<string> {
     const signer = this.psbtSigner.get(psbt)
     assertTruthy(signer, 'No signer bound to this PSBT. Sign the PSBT returned by createPegin, createAndFundPegin, or createAndFundPsbt with a signer argument.')
-    return signer.signTransaction(psbt, inputs, transactions)
+    const signedTx = await signer.signTransaction(psbt, inputs, transactions)
+    if (!signedTx) {
+      throw new sdkErrors.SigningError('The signer returned no signed transaction.')
+    }
+    return signedTx
   }
 
   /**
@@ -414,6 +418,7 @@ export class PowPegSDK {
    * @param {Utxo[]} [inputs] - The PSBT's funding UTXOs (the `inputs` field returned by `fundPegin`/`createAndFundPegin`), forwarded to the signer if it needs them. Required for signers that must verify each input against its funding transaction; optional only for signers that can sign directly from the PSBT.
    * @param {string[]} [transactions] - Raw hex transactions for `inputs` (the `transactions` field returned by `fundPegin`/`createAndFundPegin`), forwarded to the signer if it needs them. Required for signers that must verify each input against its funding transaction; optional only for signers that can sign directly from the PSBT.
    * @returns {Promise<string>} The broadcast transaction's ID.
+   * @throws {SigningError} If the signer returns no signed transaction.
    */
   async signAndBroadcastPegin(psbt: Psbt, inputs?: Utxo[], transactions?: string[]): Promise<string> {
     const signedTx = await this.signPegin(psbt, inputs, transactions)

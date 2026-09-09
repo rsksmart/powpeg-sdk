@@ -3,7 +3,7 @@ import { Psbt, Transaction } from 'bitcoinjs-lib'
 import { PowPegSDK } from './powpeg'
 import { ApiService } from '../api/api'
 import type { BitcoinSigner, BitcoinDataSource } from '../types'
-import { AmountBelowMinError, NotEnoughFundsError, InvalidAddressError, FederationAddressError, InvalidFeeRateError } from '../errors'
+import { AmountBelowMinError, NotEnoughFundsError, InvalidAddressError, FederationAddressError, InvalidFeeRateError, SigningError } from '../errors'
 import { ethers } from '@rsksmart/bridges-core-sdk'
 import { TxType, PegoutStatuses, PeginStatuses } from '../types'
 
@@ -539,7 +539,7 @@ describe('sdk', () => {
       const signerA = {
         getNonChangeAddresses: vi.fn().mockReturnValue(btcAddresses.slice(1)),
         getChangeAddresses: vi.fn(() => new Promise<string[]>((resolve) => { resolveSignerAChangeAddresses = resolve })),
-        signTransaction: vi.fn(),
+        signTransaction: vi.fn().mockResolvedValue('signed-by-signer-a'),
       } satisfies BitcoinSigner
       const signerB = {
         getNonChangeAddresses: vi.fn().mockReturnValue(btcAddresses.slice(1)),
@@ -590,6 +590,20 @@ describe('sdk', () => {
 
       expect(psbtSigner.signTransaction).toHaveBeenCalledWith(psbt, inputs, transactions)
       expect(mockedSigner.signTransaction).not.toHaveBeenCalled()
+    })
+
+    it('should not broadcast when the signer returns no signed transaction', async () => {
+      const failingSigner = {
+        getNonChangeAddresses: vi.fn(),
+        getChangeAddresses: vi.fn(),
+        signTransaction: vi.fn().mockResolvedValue(''),
+      } satisfies BitcoinSigner
+      const utxo = { address: btcAddresses[1], txid: fundingTx.txid, vout: 0, amount: 2_000_000n }
+
+      const { psbt, inputs, transactions } = await sdk.createAndFundPsbt(500_000n, btcAddresses[2], [utxo], 'average', failingSigner)
+
+      await expect(sdk.signAndBroadcastPegin(psbt, inputs, transactions)).rejects.toThrow(SigningError)
+      expect(mockedDataSource.broadcast).not.toHaveBeenCalled()
     })
 
     it('should fail to sign a PSBT that has no signer bound to it', async () => {

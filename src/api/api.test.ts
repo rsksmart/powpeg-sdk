@@ -37,6 +37,60 @@ describe('ApiService', () => {
     await expect(apiService.getFeeRate('fast')).rejects.toThrow('Bad request')
   })
 
+  it('should throw API Error with the message the 2WP API nests under `error`', async () => {
+    const errorResponse = {
+      response: {
+        status: 400,
+        data: { error: { statusCode: 400, name: 'BadRequestError', message: 'Invalid data "abc" for parameter "block".', code: 'INVALID_PARAMETER_VALUE' } },
+      },
+    }
+    mockIsAxiosError.mockReturnValue(true)
+    mockGet.mockRejectedValue(errorResponse)
+
+    await expect(apiService.getFeeRate('fast')).rejects.toThrow(APIError)
+    await expect(apiService.getFeeRate('fast')).rejects.toThrow('Invalid data "abc" for parameter "block".')
+  })
+
+  it('should fall back to a generic message when the error body carries no message string', async () => {
+    const errorResponse = {
+      response: {
+        status: 500,
+        data: { error: { code: 7 } },
+      },
+    }
+    mockIsAxiosError.mockReturnValue(true)
+    mockGet.mockRejectedValue(errorResponse)
+
+    await expect(apiService.getFeeRate('fast')).rejects.toThrow('Server error')
+    await expect(apiService.getFeeRate('fast')).rejects.not.toThrow('[object Object]')
+  })
+
+  it('should unwrap a message that carries a serialized JSON document', async () => {
+    const errorResponse = {
+      response: {
+        status: 400,
+        data: { error: { statusCode: 400, name: 'Error', message: '{"error":"Transaction \'aaaa\' not found"}' } },
+      },
+    }
+    mockIsAxiosError.mockReturnValue(true)
+    mockGet.mockRejectedValue(errorResponse)
+
+    await expect(apiService.getFeeRate('fast')).rejects.toThrow(/^Transaction 'aaaa' not found$/)
+  })
+
+  it('should keep a message that only looks like JSON as it came', async () => {
+    const errorResponse = {
+      response: {
+        status: 400,
+        data: { error: { message: '{not really json' } },
+      },
+    }
+    mockIsAxiosError.mockReturnValue(true)
+    mockGet.mockRejectedValue(errorResponse)
+
+    await expect(apiService.getFeeRate('fast')).rejects.toThrow('{not really json')
+  })
+
   it('should throw API Error for network errors', async () => {
     const errorRequest = { request: {} }
     mockIsAxiosError.mockReturnValue(true)

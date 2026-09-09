@@ -44,3 +44,6 @@ The package ships no `BitcoinSigner` implementations — see [`bitcoin-signers.m
 | `NotEnoughFundsError` | class | Thrown when the available UTXOs/balance can't cover the requested amount plus fees. |
 | `APIError` | class | Thrown when the 2WP API responds with an error, a failed request, or an unexpected failure. |
 | `InvalidAddressError` | class | Thrown when one or more Bitcoin addresses don't belong to the SDK's configured network. |
+| `FederationAddressError` | class | Thrown when the federation address can't be retrieved from the pegin configuration endpoint or doesn't match the Bridge contract's value. |
+| `SigningError` | class | Thrown when the configured `BitcoinSigner` doesn't return a signed transaction, so there is nothing to broadcast. |
+| `InvalidFeeRateError` | class | Thrown when a fee rate from the configured `BitcoinDataSource` is missing, non-numeric, non-positive, exceeds the configured bound, or produces a fee disproportionate to the amount being sent. |

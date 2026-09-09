@@ -47,6 +47,14 @@ export class InvalidAddressError extends Error {
   }
 }
 
+/** Thrown when the configured BitcoinSigner doesn't return a signed transaction, so there is nothing to broadcast. */
+export class SigningError extends Error {
+  constructor(message?: string) {
+    super(message)
+    this.name = 'SigningError'
+  }
+}
+
 /** Thrown when a fee rate from the configured BitcoinDataSource is missing, non-numeric, non-positive, exceeds the configured bound, or produces a fee disproportionate to the amount being sent. */
 export class InvalidFeeRateError extends Error {
   constructor(message?: string) {
