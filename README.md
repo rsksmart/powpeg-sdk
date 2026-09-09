@@ -13,12 +13,11 @@ pnpm add @rsksmart/powpeg-sdk
 ## Quick Start
 
 ```ts
-import { PowPegSDK, LedgerSigner } from '@rsksmart/powpeg-sdk'
+import { PowPegSDK } from '@rsksmart/powpeg-sdk'
 
 const sdk = new PowPegSDK(null, null, 'TEST')
 
-// Peg-in: BTC -> RBTC
-const signer = await LedgerSigner.init('TEST')
+// Peg-in: BTC -> RBTC. `signer` is your own BitcoinSigner implementation.
 const unsignedPegin = await sdk.createAndFundPegin(500_000n, '0xRecipientRskAddress', signer)
 const txId = await sdk.signAndBroadcastPegin(unsignedPegin.psbt, unsignedPegin.inputs, unsignedPegin.transactions)
 
@@ -27,11 +26,11 @@ const { tx, bitcoinFee, rootstockFee } = await sdk.createPegout('0.01', '0xSende
 await sdk.signAndBroadcastPegout(tx, someEthersSigner)
 ```
 
-See [`docs/bitcoin-signers.md`](./docs/bitcoin-signers.md) for other ways to supply a `BitcoinSigner` (e.g. `TrezorSigner`, or your own implementation).
+The SDK ships no signer implementations — see [`docs/bitcoin-signers.md`](./docs/bitcoin-signers.md) for the `BitcoinSigner` contract and how to supply one.
 
 ## API Reference
 
-See [`docs/api.md`](./docs/api.md) for the full table of public exports (`PowPegSDK`, the bundled signers, and every exported type/error).
+See [`docs/api.md`](./docs/api.md) for the full table of public exports (`PowPegSDK` and every exported type/error).
 
 ## Testing
 

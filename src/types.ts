@@ -4,7 +4,7 @@ import { Psbt } from 'bitcoinjs-lib'
 export type FeeLevel = 'slow' | 'average' | 'fast'
 
 /**
- * Contract that a Bitcoin signing backend (e.g. {@link TrezorSigner}, {@link LedgerSigner}) must implement
+ * Contract that a Bitcoin signing backend must implement
  * so {@link PowPegSDK} can derive addresses and sign peg-in transactions with it.
  */
 export interface BitcoinSigner {

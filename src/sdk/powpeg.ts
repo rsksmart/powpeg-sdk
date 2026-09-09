@@ -411,8 +411,8 @@ export class PowPegSDK {
   /**
    * Signs a peg-in PSBT with the configured Bitcoin signer and broadcasts it via the configured data source.
    * @param {Psbt} psbt - The funded peg-in PSBT to sign and broadcast.
-   * @param {Utxo[]} [inputs] - The PSBT's funding UTXOs (the `inputs` field returned by `fundPegin`/`createAndFundPegin`), forwarded to the signer if it needs them. Required for the bundled hardware-wallet signers (Ledger, Trezor); optional only for signers that can sign directly from the PSBT.
-   * @param {string[]} [transactions] - Raw hex transactions for `inputs` (the `transactions` field returned by `fundPegin`/`createAndFundPegin`), forwarded to the signer if it needs them. Required for the bundled hardware-wallet signers (Ledger, Trezor); optional only for signers that can sign directly from the PSBT.
+   * @param {Utxo[]} [inputs] - The PSBT's funding UTXOs (the `inputs` field returned by `fundPegin`/`createAndFundPegin`), forwarded to the signer if it needs them. Required for signers that must verify each input against its funding transaction; optional only for signers that can sign directly from the PSBT.
+   * @param {string[]} [transactions] - Raw hex transactions for `inputs` (the `transactions` field returned by `fundPegin`/`createAndFundPegin`), forwarded to the signer if it needs them. Required for signers that must verify each input against its funding transaction; optional only for signers that can sign directly from the PSBT.
    * @returns {Promise<string>} The broadcast transaction's ID.
    */
   async signAndBroadcastPegin(psbt: Psbt, inputs?: Utxo[], transactions?: string[]): Promise<string> {

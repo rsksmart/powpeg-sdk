@@ -12,12 +12,7 @@ See [`PowPegSDK`](../src/sdk/powpeg.ts) for the full list of methods (`estimateP
 
 ## Bitcoin signers
 
-See [`bitcoin-signers.md`](./bitcoin-signers.md) for the `BitcoinSigner` contract and the bundled implementations.
-
-| Export | Kind | Description |
-|---|---|---|
-| [`TrezorSigner`](../src/bitcoin-signers/trezor/trezor.ts) | class | `BitcoinSigner` backed by a Trezor hardware wallet, connected via `@trezor/connect-web`. |
-| [`LedgerSigner`](../src/bitcoin-signers/ledger/ledger.ts) | class | `BitcoinSigner` backed by a Ledger hardware wallet, connected over WebUSB. |
+The package ships no `BitcoinSigner` implementations — see [`bitcoin-signers.md`](./bitcoin-signers.md) for the contract and how to supply your own.
 
 ## Types (`src/types.ts`)
 

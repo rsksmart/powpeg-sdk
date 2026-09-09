@@ -503,7 +503,7 @@ describe('sdk', () => {
 
     it('should reject a UTXO whose fetched transaction is not actually the one that was requested', async () => {
       // A data source (hostile, or just wrong) that hands back an unrelated transaction —
-      // e.g. this could be used to trick a Ledger signer into trusting the wrong prevout.
+      // e.g. this could be used to trick a signer into trusting the wrong prevout.
       const wrongTx = buildFundingTx(2_000_000, 0, 99)
       const utxo = { address: btcAddresses[1], txid: fundingTx.txid, vout: 0, amount: 2_000_000n }
       const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [utxo])

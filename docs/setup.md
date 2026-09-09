@@ -46,7 +46,7 @@ pnpm add @rsksmart/powpeg-sdk
 
 | Parameter | Purpose | Default when omitted |
 |---|---|---|
-| `bitcoinSigner` | `BitcoinSigner` used to sign peg-in transactions (e.g. `LedgerSigner`, `TrezorSigner`) | `null` — required only for operations that sign transactions |
+| `bitcoinSigner` | `BitcoinSigner` used to sign peg-in transactions — supplied by the consumer, see [`bitcoin-signers.md`](./bitcoin-signers.md) | `null` — required only for operations that sign transactions |
 | `bitcoinDataSource` | `BitcoinDataSource` used for fee rates, UTXOs, tx broadcast and tx status | `null` — falls back to the built-in `apiUrl`-backed source |
 | `network` | `'MAIN'` or `'TEST'` — selects Bitcoin network params and address validation rules | required |
 | `rpcProviderUrl` | Rootstock JSON-RPC endpoint used to read the bridge precompile and send peg-outs | RSK public node for the given network (`https://public-node.rsk.co` / `https://public-node.testnet.rsk.co`) |
@@ -60,6 +60,3 @@ pnpm add @rsksmart/powpeg-sdk
 
 - **Rootstock RPC node** — read via `ethers.providers.JsonRpcProvider`, used for the bridge precompile (`Bridge` in `src/bridge.ts`) and to send peg-out transactions.
 - **2WP API** — the SDK's built-in `BitcoinDataSource` implementation (`src/api/api.ts`); the fee-rate/UTXO/broadcast/address-details methods can be replaced with your own `BitcoinDataSource`, but `createPegin` always calls the 2WP API's `/pegin-configuration` endpoint directly (via the internal `ApiService`, independent of `bitcoinDataSource`) to verify the federation address against the Bridge contract — this call cannot be substituted, so the 2WP API stays a required dependency even when every other data source is custom.
-- **Hardware wallets** (only needed if you use the bundled signers — see [`bitcoin-signers.md`](./bitcoin-signers.md)):
-  - **Ledger** — via `@ledgerhq/hw-transport-webusb`, requires a browser environment with WebUSB support.
-  - **Trezor** — via `@trezor/connect-web`.
