@@ -58,15 +58,26 @@ export class ApiService implements BitcoinDataSource {
     fast: 1,
   }
   private api: AxiosInstance
+  private requestTimeoutMs = 10_000
+  private maxResponseBytes = 10 * 1024 * 1024
 
   constructor(network: Network, apiUrl?: string, private readonly maxFeeRateSatPerByte = 1000) {
-    this.api = axios.create({ baseURL: apiUrl ?? this.apiUrls[network] })
+    this.api = axios.create({
+      baseURL: apiUrl ?? this.apiUrls[network],
+      timeout: this.requestTimeoutMs,
+      maxContentLength: this.maxResponseBytes,
+      maxBodyLength: this.maxResponseBytes,
+      maxRedirects: 0,
+    })
   }
 
   private handleError(error: unknown): never {
     if (axios.isAxiosError(error)) {
       if (error.response) {
         const { status, data } = error.response
+        if (status >= 300 && status < 400) {
+          throw new APIError(`The API responded with a redirect (${status}); apiUrl must point at the final host.`, status, data)
+        }
         throw new APIError(getErrorMessage(data), status, data)
       }
       if (error.request) {

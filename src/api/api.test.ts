@@ -2,15 +2,19 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { ApiService } from './api'
 import { APIError } from '../errors'
 
-const { mockGet, mockPost, mockIsAxiosError } = vi.hoisted(() => ({
+const { mockGet, mockPost, mockIsAxiosError, mockCreate } = vi.hoisted(() => ({
   mockGet: vi.fn(),
   mockPost: vi.fn(),
   mockIsAxiosError: vi.fn(),
+  mockCreate: vi.fn(),
 }))
 
 vi.mock('axios', () => ({
   default: {
-    create: () => ({ get: mockGet, post: mockPost }),
+    create: (...args: unknown[]) => {
+      mockCreate(...args)
+      return { get: mockGet, post: mockPost }
+    },
     isAxiosError: mockIsAxiosError,
   },
 }))
@@ -23,6 +27,18 @@ beforeEach(() => {
 })
 
 describe('ApiService', () => {
+  it('should create the HTTP client with transport limits and redirects disabled', () => {
+    new ApiService('TEST')
+
+    expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({
+      baseURL: 'https://api.2wp.testnet.rootstock.io',
+      timeout: 10_000,
+      maxContentLength: 10 * 1024 * 1024,
+      maxBodyLength: 10 * 1024 * 1024,
+      maxRedirects: 0,
+    }))
+  })
+
   it('should throw API Error with status and message from response', async () => {
     const errorResponse = {
       response: {
@@ -89,6 +105,20 @@ describe('ApiService', () => {
     mockGet.mockRejectedValue(errorResponse)
 
     await expect(apiService.getFeeRate('fast')).rejects.toThrow('{not really json')
+  })
+
+  it('should name the redirect when the API answers with one', async () => {
+    const errorResponse = {
+      response: {
+        status: 302,
+        data: '',
+      },
+    }
+    mockIsAxiosError.mockReturnValue(true)
+    mockGet.mockRejectedValue(errorResponse)
+
+    await expect(apiService.getFeeRate('fast')).rejects.toThrow('responded with a redirect (302)')
+    await expect(apiService.getFeeRate('fast')).rejects.not.toThrow('Server error')
   })
 
   it('should throw API Error for network errors', async () => {
