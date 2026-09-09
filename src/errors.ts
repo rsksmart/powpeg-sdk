@@ -70,3 +70,18 @@ export class WrongNetworkError extends Error {
     this.name = 'WrongNetworkError'
   }
 }
+
+/**
+ * Thrown when the Bridge accepted the peg-out transaction but rejected the release request itself,
+ * refunding the amount instead of queueing it. `reason` carries the Bridge's own code: 1 low amount,
+ * 2 caller is a contract, 3 fee above value.
+ */
+export class PegoutRejectedError extends Error {
+  readonly reason: number
+
+  constructor(reason: number, message?: string) {
+    super(message)
+    this.name = 'PegoutRejectedError'
+    this.reason = reason
+  }
+}

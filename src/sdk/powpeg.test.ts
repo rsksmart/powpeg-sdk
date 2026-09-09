@@ -3,7 +3,8 @@ import { Psbt, Transaction } from 'bitcoinjs-lib'
 import { PowPegSDK } from './powpeg'
 import { ApiService } from '../api/api'
 import type { BitcoinSigner, BitcoinDataSource } from '../types'
-import { AmountBelowMinError, NotEnoughFundsError, InvalidAddressError, FederationAddressError, InvalidFeeRateError, SigningError, WrongNetworkError } from '../errors'
+import { AmountBelowMinError, NotEnoughFundsError, InvalidAddressError, FederationAddressError, InvalidFeeRateError, SigningError, WrongNetworkError, PegoutRejectedError } from '../errors'
+import { bridge as bridgePrecompile } from '@rsksmart/rsk-precompiled-abis'
 import { ethers } from '@rsksmart/bridges-core-sdk'
 import { TxType, PegoutStatuses, PeginStatuses } from '../types'
 
@@ -44,6 +45,10 @@ const mockValues = {
   estimatedGas: ethers.BigNumber.from(50_000n),
   gasPrice: ethers.BigNumber.from(6_000_123n),
   bitcoinFeeRate: 1,
+  // Live testnet federation at the time of writing: 6-of-11, 491-byte P2SH-P2WSH ERP redeem script.
+  feePerKb: 8_000n,
+  federationThreshold: 6,
+  redeemScript: `0x${'64'.repeat(491)}`,
 }
 
 const createMockProvider = (balance = mockValues.highBalance) => ({
@@ -78,15 +83,20 @@ vi.mock('../api/api', async () => {
 
 vi.mock('@rsksmart/bridges-core-sdk', async () => {
   const original = await vi.importActual<typeof import('@rsksmart/bridges-core-sdk')>('@rsksmart/bridges-core-sdk')
+  const { bridge } = await import('@rsksmart/rsk-precompiled-abis')
   return {
     ...original,
     ethers: {
       ...original.ethers,
       Contract: vi.fn(() => ({
         ...ethers.Contract.prototype,
+        interface: new original.ethers.utils.Interface(bridge.abi),
         getFederationAddress: vi.fn().mockResolvedValue(mockValues.federationAddress),
         getEstimatedFeesForNextPegOutEvent: vi.fn().mockResolvedValue(mockValues.estimatedFeeForNextPegOut),
         getQueuedPegoutsCount: vi.fn().mockResolvedValue(mockValues.queuedPegoutsCount),
+        getFeePerKb: vi.fn().mockImplementation(() => original.ethers.BigNumber.from(mockValues.feePerKb)),
+        getActivePowpegRedeemScript: vi.fn().mockImplementation(() => mockValues.redeemScript),
+        getFederationThreshold: vi.fn().mockImplementation(() => original.ethers.BigNumber.from(mockValues.federationThreshold)),
       })),
       providers: {
         JsonRpcProvider: vi.fn().mockImplementation(() => mockProvider),
@@ -164,6 +174,50 @@ describe('sdk', () => {
     expect(fees.rootstockFee).toBe(300_006_150_000n)
   })
 
+  it('should size a peg-out the way the Bridge does', () => {
+    // Vector from rskj's BridgeUtilsTest.testCalculatePegoutTxSize_2Inputs_2Outputs:
+    // a P2SH-P2WSH ERP federation requiring 7 signatures, whose redeem script is 409 bytes, sizes at 694 vB.
+    const vsize = sdk['simulatePegoutVSize'](`0x${'64'.repeat(409)}`, 7, mockValues.federationAddress)
+
+    expect(vsize).toBe(694)
+  })
+
+  it('should allow a peg-out above the network minimum the Bridge enforces', async () => {
+    const pegout = await sdk.createPegout('0.003', rskAddresses[0])
+
+    expect(pegout).toBeDefined()
+  })
+
+  it('should reject a peg-out below the floor derived from the current fee per kb', async () => {
+    const strictSdk = new PowPegSDK(mockedSigner, mockedDataSource, 'TEST')
+    vi.spyOn(strictSdk['bridge'], 'getFeePerKb').mockResolvedValue(500_000n)
+
+    await expect(strictSdk.createPegout('0.005', rskAddresses[0])).rejects.toThrowError(AmountBelowMinError)
+  })
+
+  it('should surface a peg-out the Bridge rejected instead of reporting success', async () => {
+    const bridgeInterface = new ethers.utils.Interface(bridgePrecompile.abi)
+    const { data, topics } = bridgeInterface.encodeEventLog(
+      bridgeInterface.getEvent('release_request_rejected'),
+      [ethers.constants.AddressZero, 500_000_000_000_000n, 1],
+    )
+    const receipt = {
+      transactionHash: '0xrejected',
+      logs: [{ address: '0x0000000000000000000000000000000001000006', data, topics }],
+    }
+    const signer = {
+      getChainId: vi.fn().mockResolvedValue(31),
+      sendTransaction: vi.fn().mockResolvedValue({ hash: '0xsent' }),
+      provider: { waitForTransaction: vi.fn().mockResolvedValue(receipt) },
+    } as unknown as ethers.Signer
+
+    const { tx } = await sdk.createPegout('0.005', rskAddresses[0])
+    const error = await sdk.signAndBroadcastPegout(tx, signer).catch((e) => e)
+
+    expect(error).toBeInstanceOf(PegoutRejectedError)
+    expect(error.reason).toBe(1)
+  })
+
   it('should pin the configured network on the Rootstock provider', () => {
     new PowPegSDK(null, null, 'MAIN')
 
@@ -189,7 +243,7 @@ describe('sdk', () => {
   })
 
   it('should send a peg-out when the signer is on the configured chain', async () => {
-    const waitForTransaction = vi.fn().mockResolvedValue({ transactionHash: '0xreceipt' })
+    const waitForTransaction = vi.fn().mockResolvedValue({ transactionHash: '0xreceipt', logs: [] })
     const signer = {
       getChainId: vi.fn().mockResolvedValue(31),
       sendTransaction: vi.fn().mockResolvedValue({ hash: '0xsent' }),
@@ -201,7 +255,7 @@ describe('sdk', () => {
 
     expect(signer.sendTransaction).toHaveBeenCalledWith(tx)
     expect(waitForTransaction).toHaveBeenCalledWith('0xsent')
-    expect(receipt).toEqual({ transactionHash: '0xreceipt' })
+    expect(receipt).toEqual({ transactionHash: '0xreceipt', logs: [] })
   })
 
   it('should pass its maxFeeRateSatPerByte through to the default ApiService', () => {

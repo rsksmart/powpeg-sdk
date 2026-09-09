@@ -22,7 +22,16 @@ export class PowPegSDK {
   private psbtSigner = new WeakMap<Psbt, BitcoinSigner>()
   private minPeginAmount = 500_000n
   private peginFeeEstimationInputs = 2
-  private minPegoutAmount = '0.004'
+  private minPegoutSatoshis: Record<Network, bigint> = {
+    MAIN: 400_000n,
+    TEST: 250_000n,
+  }
+  private pegoutFeeGapPercentage = 80n
+  private pegoutSimulationInputs = 2
+  private pegoutSimulationOutputs = 2
+  private pegoutScriptSigSize = 36
+  private pegoutSignatureSize = 73
+  private weiPerSatoshi = 10_000_000_000n
   private btcNetworkConfig: typeof networks[Network]
   private bridge: Bridge
   private api: ApiService
@@ -425,11 +434,71 @@ export class PowPegSDK {
     return this.bitcoinDataSource.broadcast(signedTx)
   }
 
-  private validateMinimumPegoutAmount(amount: string): void {
-    const amountBN = ethers.utils.parseUnits(amount, 18).toBigInt()
-    const minAmountBN = ethers.utils.parseUnits(this.minPegoutAmount, 18).toBigInt()
-    if (amountBN < minAmountBN) {
-      throw new sdkErrors.AmountBelowMinError(`Minimum allowed amount is ${this.minPegoutAmount}.`)
+  private varIntSize(value: number): number {
+    if (value < 0xfd) {
+      return 1
+    }
+    if (value <= 0xffff) {
+      return 3
+    }
+    if (value <= 0xffffffff) {
+      return 5
+    }
+    return 9
+  }
+
+  /**
+   * Witness bytes each input contributes once signed: the stack item count, the two empty elements the
+   * federation's script pushes, one signature per required signer, and the redeem script itself.
+   */
+  private estimateSigningSizePerInput(redeemScript: string, threshold: number): number {
+    const redeemScriptSize = Buffer.from(remove0x(redeemScript), 'hex').length
+    const stackItemCount = threshold + 3
+    return this.varIntSize(stackItemCount)
+      + 1
+      + (this.varIntSize(this.pegoutSignatureSize) + this.pegoutSignatureSize) * threshold
+      + 1
+      + this.varIntSize(redeemScriptSize) + redeemScriptSize
+  }
+
+  /**
+   * Virtual size of the transaction the Bridge would build for a regular peg-out: two inputs spending
+   * federation UTXOs and two outputs paying the federation, weighted as per BIP141.
+   */
+  private simulatePegoutVSize(redeemScript: string, threshold: number, federationAddress: string): number {
+    const transaction = new Transaction()
+    for (let i = 0; i < this.pegoutSimulationInputs; i++) {
+      transaction.addInput(Buffer.alloc(32), 0, undefined, Buffer.alloc(this.pegoutScriptSigSize))
+    }
+    const outputScript = address.toOutputScript(federationAddress, this.btcNetworkConfig.lib)
+    for (let i = 0; i < this.pegoutSimulationOutputs; i++) {
+      transaction.addOutput(outputScript, 0)
+    }
+    const baseSize = transaction.byteLength(false)
+    const witnessSize = this.pegoutSimulationInputs * this.estimateSigningSizePerInput(redeemScript, threshold)
+    return Math.floor((4 * baseSize + witnessSize) / 4)
+  }
+
+  private async getMinimumPegoutSatoshis(): Promise<bigint> {
+    const [feePerKb, redeemScript, threshold, federationAddress] = await Promise.all([
+      this.bridge.getFeePerKb(),
+      this.bridge.getActivePowpegRedeemScript(),
+      this.bridge.getFederationThreshold(),
+      this.bridge.getFederationAddress(),
+    ])
+    const pegoutSize = BigInt(this.simulatePegoutVSize(redeemScript, threshold, federationAddress))
+    const feeForPegout = feePerKb * pegoutSize / 1000n
+    const requiredFunds = feeForPegout + feeForPegout * this.pegoutFeeGapPercentage / 100n
+    const networkMinimum = this.minPegoutSatoshis[this.network]
+    return requiredFunds > networkMinimum ? requiredFunds : networkMinimum
+  }
+
+  private async validateMinimumPegoutAmount(amount: string): Promise<void> {
+    const amountSatoshis = ethers.utils.parseUnits(amount, 18).toBigInt() / this.weiPerSatoshi
+    const minimumSatoshis = await this.getMinimumPegoutSatoshis()
+    if (amountSatoshis < minimumSatoshis) {
+      const minimumAmount = ethers.utils.formatUnits(minimumSatoshis * this.weiPerSatoshi, 18)
+      throw new sdkErrors.AmountBelowMinError(`Minimum allowed amount is ${minimumAmount}.`)
     }
   }
 
@@ -448,9 +517,10 @@ export class PowPegSDK {
    * @param {string} amount - Amount to peg out, in RBTC (18 decimals).
    * @param {string} [fromAddress] - Rootstock sender address used to estimate gas. Defaults to the zero address.
    * @returns {Promise<PegoutFeeEstimation>} The estimated Bitcoin fee (satoshis) and Rootstock gas fee (wei).
+   * @throws {AmountBelowMinError} If `amount` is below the minimum the Bridge currently enforces, derived from its fee per kb and the active federation.
    */
   async estimatePegoutFees(amount: string, fromAddress: string = ethers.constants.AddressZero): Promise<PegoutFeeEstimation> {
-    this.validateMinimumPegoutAmount(amount)
+    await this.validateMinimumPegoutAmount(amount)
     const tx = this.createPegoutTransaction(amount, fromAddress)
     const [gas, gasPrice, bitcoinFee] = await Promise.all([
       this.rskProvider.estimateGas(tx),
@@ -496,6 +566,7 @@ export class PowPegSDK {
    * @param {ethers.Signer} signer - Ethers signer used to send the transaction.
    * @returns The mined transaction receipt, if the signer's provider is set.
    * @throws {WrongNetworkError} If the signer's chain doesn't match the network the SDK was configured for.
+   * @throws {PegoutRejectedError} If the transaction was mined but the Bridge rejected and refunded the release request.
    */
   async signAndBroadcastPegout(tx: { from: string, to: string, value: string, chainId?: number }, signer: ethers.Signer) {
     const expectedChainId = this.rskNetworks[this.network].chainId
@@ -504,8 +575,15 @@ export class PowPegSDK {
       throw new sdkErrors.WrongNetworkError(`Signer is on chain ${signerChainId}, but the SDK is configured for ${this.network} (chain ${expectedChainId}).`)
     }
     const { hash } = await signer.sendTransaction(tx)
+    const receipt = await signer.provider?.waitForTransaction(hash)
+    if (receipt) {
+      const rejected = this.bridge.findRejectedPegout(receipt.logs ?? [])
+      if (rejected) {
+        throw new sdkErrors.PegoutRejectedError(rejected.reason, `The Bridge rejected the peg-out of ${rejected.amount} wei and refunded it.`)
+      }
+    }
 
-    return signer.provider?.waitForTransaction(hash)
+    return receipt
   }
 
   /**

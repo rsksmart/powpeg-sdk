@@ -13,6 +13,39 @@ export class Bridge {
     return this.bridgeContract.getFederationAddress?.()
   }
 
+  async getFeePerKb(): Promise<bigint> {
+    const feePerKb: ethers.BigNumber = await this.bridgeContract.getFeePerKb()
+    return feePerKb.toBigInt()
+  }
+
+  async getActivePowpegRedeemScript(): Promise<string> {
+    return this.bridgeContract.getActivePowpegRedeemScript()
+  }
+
+  async getFederationThreshold(): Promise<number> {
+    const threshold: ethers.BigNumber = await this.bridgeContract.getFederationThreshold()
+    return threshold.toNumber()
+  }
+
+  /** Reads a `release_request_rejected` event out of a peg-out receipt's logs, if the Bridge emitted one. */
+  findRejectedPegout(logs: { address: string, topics: string[], data: string }[]): { amount: bigint, reason: number } | undefined {
+    for (const log of logs) {
+      if (log.address?.toLowerCase() !== this.address.toLowerCase()) {
+        continue
+      }
+      let parsed: ethers.utils.LogDescription
+      try {
+        parsed = this.bridgeContract.interface.parseLog(log)
+      }
+      catch {
+        continue
+      }
+      if (parsed.name === 'release_request_rejected') {
+        return { amount: parsed.args[1].toBigInt(), reason: parsed.args[2].toNumber() }
+      }
+    }
+  }
+
   async getPegoutEstimatedFee(): Promise<bigint> {
     const [nextPegoutCost, pegoutQueueCount] = await Promise.all<[ethers.BigNumber, ethers.BigNumber]>([
       this.bridgeContract.getEstimatedFeesForNextPegOutEvent(),
