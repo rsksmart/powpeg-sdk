@@ -46,4 +46,5 @@ The package ships no `BitcoinSigner` implementations — see [`bitcoin-signers.m
 | `InvalidAddressError` | class | Thrown when one or more Bitcoin addresses don't belong to the SDK's configured network. |
 | `FederationAddressError` | class | Thrown when the federation address can't be retrieved from the pegin configuration endpoint or doesn't match the Bridge contract's value. |
 | `SigningError` | class | Thrown when the configured `BitcoinSigner` doesn't return a signed transaction, so there is nothing to broadcast. |
+| `WrongNetworkError` | class | Thrown when the signer's chain doesn't match the network the SDK was configured for. |
 | `InvalidFeeRateError` | class | Thrown when a fee rate from the configured `BitcoinDataSource` is missing, non-numeric, non-positive, exceeds the configured bound, or produces a fee disproportionate to the amount being sent. |

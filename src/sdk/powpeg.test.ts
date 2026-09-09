@@ -3,7 +3,7 @@ import { Psbt, Transaction } from 'bitcoinjs-lib'
 import { PowPegSDK } from './powpeg'
 import { ApiService } from '../api/api'
 import type { BitcoinSigner, BitcoinDataSource } from '../types'
-import { AmountBelowMinError, NotEnoughFundsError, InvalidAddressError, FederationAddressError, InvalidFeeRateError, SigningError } from '../errors'
+import { AmountBelowMinError, NotEnoughFundsError, InvalidAddressError, FederationAddressError, InvalidFeeRateError, SigningError, WrongNetworkError } from '../errors'
 import { ethers } from '@rsksmart/bridges-core-sdk'
 import { TxType, PegoutStatuses, PeginStatuses } from '../types'
 
@@ -162,6 +162,46 @@ describe('sdk', () => {
 
     expect(fees.bitcoinFee).toBe(15_166n)
     expect(fees.rootstockFee).toBe(300_006_150_000n)
+  })
+
+  it('should pin the configured network on the Rootstock provider', () => {
+    new PowPegSDK(null, null, 'MAIN')
+
+    expect(ethers.providers.JsonRpcProvider).toHaveBeenCalledWith('https://public-node.rsk.co', 30)
+  })
+
+  it('should include the configured chain id in the peg-out transaction', async () => {
+    const { tx } = await sdk.createPegout('0.005', rskAddresses[0])
+
+    expect(tx.chainId).toBe(31)
+  })
+
+  it('should not send a peg-out when the signer is on another chain', async () => {
+    const signer = {
+      getChainId: vi.fn().mockResolvedValue(1),
+      sendTransaction: vi.fn(),
+    } as unknown as ethers.Signer
+
+    const { tx } = await sdk.createPegout('0.005', rskAddresses[0])
+
+    await expect(sdk.signAndBroadcastPegout(tx, signer)).rejects.toThrow(WrongNetworkError)
+    expect(signer.sendTransaction).not.toHaveBeenCalled()
+  })
+
+  it('should send a peg-out when the signer is on the configured chain', async () => {
+    const waitForTransaction = vi.fn().mockResolvedValue({ transactionHash: '0xreceipt' })
+    const signer = {
+      getChainId: vi.fn().mockResolvedValue(31),
+      sendTransaction: vi.fn().mockResolvedValue({ hash: '0xsent' }),
+      provider: { waitForTransaction },
+    } as unknown as ethers.Signer
+
+    const { tx } = await sdk.createPegout('0.005', rskAddresses[0])
+    const receipt = await sdk.signAndBroadcastPegout(tx, signer)
+
+    expect(signer.sendTransaction).toHaveBeenCalledWith(tx)
+    expect(waitForTransaction).toHaveBeenCalledWith('0xsent')
+    expect(receipt).toEqual({ transactionHash: '0xreceipt' })
   })
 
   it('should pass its maxFeeRateSatPerByte through to the default ApiService', () => {

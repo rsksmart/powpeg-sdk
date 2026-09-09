@@ -62,3 +62,11 @@ export class InvalidFeeRateError extends Error {
     this.name = 'InvalidFeeRateError'
   }
 }
+
+/** Thrown when the signer's chain doesn't match the network the SDK was configured for. */
+export class WrongNetworkError extends Error {
+  constructor(message?: string) {
+    super(message)
+    this.name = 'WrongNetworkError'
+  }
+}

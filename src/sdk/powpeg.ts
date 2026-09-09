@@ -27,9 +27,9 @@ export class PowPegSDK {
   private bridge: Bridge
   private api: ApiService
   private rskProvider: ethers.providers.Provider
-  private publicNodes: Record<Network, string> = {
-    MAIN: 'https://public-node.rsk.co',
-    TEST: 'https://public-node.testnet.rsk.co',
+  private rskNetworks: Record<Network, { url: string, chainId: number }> = {
+    MAIN: { url: 'https://public-node.rsk.co', chainId: 30 },
+    TEST: { url: 'https://public-node.testnet.rsk.co', chainId: 31 },
   }
 
   /**
@@ -55,7 +55,7 @@ export class PowPegSDK {
     private maxFeeToAmountRatio = 0.5,
   ) {
     this.btcNetworkConfig = networks[network]
-    this.rskProvider = new ethers.providers.JsonRpcProvider(rpcProviderUrl ?? this.publicNodes[network])
+    this.rskProvider = new ethers.providers.JsonRpcProvider(rpcProviderUrl ?? this.rskNetworks[network].url, this.rskNetworks[network].chainId)
     this.bridge = new Bridge(this.rskProvider)
     this.api = new ApiService(network, apiUrl, maxFeeRateSatPerByte)
   }
@@ -483,7 +483,7 @@ export class PowPegSDK {
     const tx = this.createPegoutTransaction(amount, senderAccount)
 
     return {
-      tx,
+      tx: { ...tx, chainId: this.rskNetworks[this.network].chainId },
       rootstockFee: fees.rootstockFee,
       bitcoinFee: fees.bitcoinFee,
     }
@@ -492,11 +492,17 @@ export class PowPegSDK {
   /**
    * Sends a peg-out transaction (as returned by {@link createPegout}) using the given ethers signer
    * and waits for it to be mined.
-   * @param {{ from: string, to: string, value: string }} tx - The peg-out transaction request.
+   * @param {{ from: string, to: string, value: string, chainId?: number }} tx - The peg-out transaction request, as returned by {@link createPegout}.
    * @param {ethers.Signer} signer - Ethers signer used to send the transaction.
    * @returns The mined transaction receipt, if the signer's provider is set.
+   * @throws {WrongNetworkError} If the signer's chain doesn't match the network the SDK was configured for.
    */
-  async signAndBroadcastPegout(tx: { from: string, to: string, value: string }, signer: ethers.Signer) {
+  async signAndBroadcastPegout(tx: { from: string, to: string, value: string, chainId?: number }, signer: ethers.Signer) {
+    const expectedChainId = this.rskNetworks[this.network].chainId
+    const signerChainId = await signer.getChainId()
+    if (signerChainId !== expectedChainId) {
+      throw new sdkErrors.WrongNetworkError(`Signer is on chain ${signerChainId}, but the SDK is configured for ${this.network} (chain ${expectedChainId}).`)
+    }
     const { hash } = await signer.sendTransaction(tx)
 
     return signer.provider?.waitForTransaction(hash)
