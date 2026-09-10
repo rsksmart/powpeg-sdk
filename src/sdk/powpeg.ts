@@ -486,15 +486,15 @@ export class PowPegSDK {
 
   /**
    * Sends a peg-out transaction (as returned by {@link createPegout}) using the given ethers signer
-   * and waits for it to be mined.
+   * and waits for it to be mined on the SDK's RSK RPC node.
    * @param {{ from: string, to: string, value: string }} tx - The peg-out transaction request.
    * @param {ethers.Signer} signer - Ethers signer used to send the transaction.
-   * @returns The mined transaction receipt, if the signer's provider is set.
+   * @returns The mined transaction receipt.
    */
   async signAndBroadcastPegout(tx: { from: string, to: string, value: string }, signer: ethers.Signer) {
     const { hash } = await signer.sendTransaction(tx)
 
-    return signer.provider?.waitForTransaction(hash)
+    return this.rskProvider.waitForTransaction(hash)
   }
 
   /**
