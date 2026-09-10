@@ -1,5 +1,5 @@
 import { address, payments, Psbt, Transaction } from 'bitcoinjs-lib'
-import type { BitcoinDataSource, BitcoinSigner, Utxo, FeeLevel, AddressWithDetails, PegoutFeeEstimation, Feature, TxType, UnsignedPegin } from '../types'
+import type { BitcoinDataSource, BitcoinSigner, Utxo, FeeLevel, AddressWithDetails, PegoutFeeEstimation, Feature, TxType, UnsignedPegin, PowPegSDKOptions } from '../types'
 import { networks, type Network } from '../constants'
 import { getAddressType, remove0x } from '../utils'
 import { Bridge } from '../bridge'
@@ -46,33 +46,42 @@ export class PowPegSDK {
     MAIN: { url: 'https://public-node.rsk.co', chainId: 30 },
     TEST: { url: 'https://public-node.testnet.rsk.co', chainId: 31 },
   }
+  private network: Network
+  private _bitcoinSigner: BitcoinSigner | null
+  private _bitcoinDataSource: BitcoinDataSource | null
+  private maxBundleSize: number
+  private burnDustValue: number
+  private maxFeeRateSatPerByte: number
+  private maxFeeToAmountRatio: number
 
   /**
-   * @param {BitcoinSigner | null} _bitcoinSigner - An instance of a class that implements the BitcoinSigner interface.
-   * @param {BitcoinDataSource | null} _bitcoinDataSource - An instance of a class that implements the BitcoinDataSource interface or null if you won't use peg-in operations.
-   * @param {Network} network - The network to use. Either 'MAIN' or 'TEST'.
-   * @param {string} rpcProviderUrl - URL of either your own Rootstock node, the Rootstock RPC API or a third-party node provider. If not provided, it will default to the Rootstock public node for the specified network.
-   * @param {string} apiUrl - The URL of the API to use. If not provided, it will default to the production 2WP API URL for the specified network and use it as BitcoinDataSource.
-   * @param {number} maxBundleSize - The maximum number of addresses to ask for while creating a peg-in transaction. Defaults to 10.
-   * @param {number} burnDustValue - The value in satoshis to consider as dust to burn. Defaults to 2000.
-   * @param {number} maxFeeRateSatPerByte - Upper bound, in sat/B, for a fee rate coming from the configured BitcoinDataSource. Defaults to 1000.
-   * @param {number} maxFeeToAmountRatio - Upper bound for the ratio of total fee to peg-in amount. Defaults to 0.5.
+   * @param {PowPegSDKOptions} options - SDK configuration. Only `network` is required; every other field
+   * falls back to the default documented on {@link PowPegSDKOptions}.
    */
-  constructor(
-    private _bitcoinSigner: BitcoinSigner | null,
-    private _bitcoinDataSource: BitcoinDataSource | null,
-    private network: Network,
-    rpcProviderUrl?: string,
-    apiUrl?: string,
-    private maxBundleSize = 10,
-    private burnDustValue = 2000,
-    private maxFeeRateSatPerByte = 1000,
-    private maxFeeToAmountRatio = 0.5,
-  ) {
+  constructor(options: PowPegSDKOptions) {
+    const {
+      network,
+      bitcoinSigner = null,
+      bitcoinDataSource = null,
+      rpcProviderUrl,
+      apiUrl,
+      maxBundleSize = 10,
+      burnDustValue = 2000,
+      maxFeeRateSatPerByte = 1000,
+      maxFeeToAmountRatio = 0.5,
+      requestTimeoutMs = 10_000,
+    } = options
+    this.network = network
+    this._bitcoinSigner = bitcoinSigner
+    this._bitcoinDataSource = bitcoinDataSource
+    this.maxBundleSize = maxBundleSize
+    this.burnDustValue = burnDustValue
+    this.maxFeeRateSatPerByte = maxFeeRateSatPerByte
+    this.maxFeeToAmountRatio = maxFeeToAmountRatio
     this.btcNetworkConfig = networks[network]
     this.rskProvider = new ethers.providers.JsonRpcProvider(rpcProviderUrl ?? this.rskNetworks[network].url, this.rskNetworks[network].chainId)
     this.bridge = new Bridge(this.rskProvider)
-    this.api = new ApiService(network, apiUrl, maxFeeRateSatPerByte)
+    this.api = new ApiService(network, apiUrl, maxFeeRateSatPerByte, requestTimeoutMs)
   }
 
   private get bitcoinSigner() {

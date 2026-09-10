@@ -132,7 +132,7 @@ describe('sdk', () => {
     broadcast: vi.fn(),
   } satisfies BitcoinDataSource
 
-  const sdk = new PowPegSDK(mockedSigner, mockedDataSource, 'TEST')
+  const sdk = new PowPegSDK({ network: 'TEST', bitcoinSigner: mockedSigner, bitcoinDataSource: mockedDataSource })
 
   it('should create a peg-in', async () => {
     const bridgeSpy = vi.spyOn(sdk['bridge'], 'getFederationAddress')
@@ -215,7 +215,7 @@ describe('sdk', () => {
   })
 
   it('should reject an amount below the network minimum without reading the Bridge', async () => {
-    const localSdk = new PowPegSDK(mockedSigner, mockedDataSource, 'TEST')
+    const localSdk = new PowPegSDK({ network: 'TEST', bitcoinSigner: mockedSigner, bitcoinDataSource: mockedDataSource })
     const feePerKb = vi.spyOn(localSdk['bridge'], 'getFeePerKb')
     const redeemScript = vi.spyOn(localSdk['bridge'], 'getActivePowpegRedeemScript')
     const threshold = vi.spyOn(localSdk['bridge'], 'getFederationThreshold')
@@ -308,7 +308,7 @@ describe('sdk', () => {
   })
 
   it('should reject a peg-out below the floor derived from the current fee per kb', async () => {
-    const strictSdk = new PowPegSDK(mockedSigner, mockedDataSource, 'TEST')
+    const strictSdk = new PowPegSDK({ network: 'TEST', bitcoinSigner: mockedSigner, bitcoinDataSource: mockedDataSource })
     vi.spyOn(strictSdk['bridge'], 'getFeePerKb').mockResolvedValue(500_000n)
 
     await expect(strictSdk.createPegout('0.005', rskAddresses[0])).rejects.toThrowError(AmountBelowMinError)
@@ -359,7 +359,7 @@ describe('sdk', () => {
   })
 
   it('should pin the configured network on the Rootstock provider', () => {
-    new PowPegSDK(null, null, 'MAIN')
+    new PowPegSDK({ network: 'MAIN' })
 
     expect(ethers.providers.JsonRpcProvider).toHaveBeenCalledWith('https://public-node.rsk.co', 30)
   })
@@ -398,10 +398,16 @@ describe('sdk', () => {
     expect(receipt).toEqual({ transactionHash: '0xreceipt', logs: [] })
   })
 
-  it('should pass its maxFeeRateSatPerByte through to the default ApiService', () => {
-    new PowPegSDK(mockedSigner, null, 'TEST', undefined, undefined, 10, 2000, 2500)
+  it('should pass its own bounds through to the default ApiService', () => {
+    new PowPegSDK({ network: 'TEST', bitcoinSigner: mockedSigner, maxFeeRateSatPerByte: 2500, requestTimeoutMs: 4000 })
 
-    expect(ApiService).toHaveBeenCalledWith('TEST', undefined, 2500)
+    expect(ApiService).toHaveBeenCalledWith('TEST', undefined, 2500, 4000)
+  })
+
+  it('should default the API request timeout when none is given', () => {
+    new PowPegSDK({ network: 'TEST', bitcoinSigner: mockedSigner })
+
+    expect(ApiService).toHaveBeenCalledWith('TEST', undefined, 1000, 10_000)
   })
 
   describe('getFeatures', () => {
@@ -861,7 +867,7 @@ describe('sdk', () => {
         getTxHex: vi.fn().mockResolvedValue(fundingTx.hex),
         broadcast: vi.fn(),
       } satisfies BitcoinDataSource
-      const hostileSdk = new PowPegSDK(mockedSigner, hostileDataSource, 'TEST')
+      const hostileSdk = new PowPegSDK({ network: 'TEST', bitcoinSigner: mockedSigner, bitcoinDataSource: hostileDataSource })
 
       const psbt = await hostileSdk.createPegin(500_000n, rskAddresses[0])
       const funded = await hostileSdk.fundPegin(psbt, 'average')
@@ -880,7 +886,7 @@ describe('sdk', () => {
         getTxHex: vi.fn().mockResolvedValue(fundingTx.hex),
         broadcast: vi.fn(),
       } satisfies BitcoinDataSource
-      const hostileSdk = new PowPegSDK(mockedSigner, hostileDataSource, 'TEST')
+      const hostileSdk = new PowPegSDK({ network: 'TEST', bitcoinSigner: mockedSigner, bitcoinDataSource: hostileDataSource })
       const utxo = { address: btcAddresses[1], txid: fundingTx.txid, vout: 0, amount: 2_000_000n }
 
       const psbt = await hostileSdk.createPegin(500_000n, rskAddresses[0], [utxo])

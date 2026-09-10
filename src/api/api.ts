@@ -77,10 +77,9 @@ export class ApiService implements BitcoinDataSource {
   }
   private api: AxiosInstance
   private apiOrigin?: string
-  private requestTimeoutMs = 10_000
   private maxResponseBytes = 10 * 1024 * 1024
 
-  constructor(network: Network, apiUrl?: string, private readonly maxFeeRateSatPerByte = 1000) {
+  constructor(network: Network, apiUrl?: string, private readonly maxFeeRateSatPerByte = 1000, private readonly requestTimeoutMs = 10_000) {
     const baseURL = apiUrl ?? this.apiUrls[network]
     this.apiOrigin = originOf(baseURL)
     this.api = axios.create({
@@ -116,6 +115,9 @@ export class ApiService implements BitcoinDataSource {
           throw new APIError(`The API responded with a redirect (${status}); apiUrl must point at the final host.`, status, data)
         }
         throw new APIError(getErrorMessage(data), status, data)
+      }
+      if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+        throw new APIError(`The API did not respond in time: ${error.message}`)
       }
       if (error.request) {
         throw new APIError('No response from server')

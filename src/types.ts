@@ -1,4 +1,29 @@
 import { Psbt } from 'bitcoinjs-lib'
+import type { Network } from './constants'
+
+/** Configuration for {@link PowPegSDK}. Only `network` is required. */
+export interface PowPegSDKOptions {
+  /** `'MAIN'` or `'TEST'` — selects the Bitcoin network params, the Rootstock chain id and the default endpoints. */
+  network: Network
+  /** Signs peg-in transactions and derives the addresses they are funded from. Needed only for operations that sign. */
+  bitcoinSigner?: BitcoinSigner
+  /** Fee rates, UTXOs, raw transactions, broadcast and transaction status. Defaults to the built-in 2WP API-backed source. */
+  bitcoinDataSource?: BitcoinDataSource
+  /** Rootstock JSON-RPC endpoint. Defaults to the public node for `network`. */
+  rpcProviderUrl?: string
+  /** 2WP API endpoint. Defaults to the production API for `network`. */
+  apiUrl?: string
+  /** Addresses to derive per `BitcoinSigner` call while creating a peg-in. Defaults to 10. */
+  maxBundleSize?: number
+  /** Change below this many satoshis is dropped into the fee instead of added as an output. Defaults to 2000. */
+  burnDustValue?: number
+  /** Upper bound, in sat/B, for a fee rate coming from the configured `BitcoinDataSource`. Defaults to 1000. */
+  maxFeeRateSatPerByte?: number
+  /** Upper bound for the ratio of total fee to peg-in amount. Defaults to 0.5. */
+  maxFeeToAmountRatio?: number
+  /** Milliseconds before a request to the API is aborted. Defaults to 10000. */
+  requestTimeoutMs?: number
+}
 
 /** Priority level used to look up a Bitcoin network fee rate. */
 export type FeeLevel = 'slow' | 'average' | 'fast'

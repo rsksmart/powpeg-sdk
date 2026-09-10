@@ -13,9 +13,9 @@ pnpm add @rsksmart/powpeg-sdk
 ## Quick Start
 
 ```ts
-import { PowPegSDK } from '@rsksmart/powpeg-sdk'
+import { PowPegSDK, Network } from '@rsksmart/powpeg-sdk'
 
-const sdk = new PowPegSDK(null, null, 'TEST')
+const sdk = new PowPegSDK({ network: Network.TEST })
 
 // Peg-in: BTC -> RBTC. `signer` is your own BitcoinSigner implementation.
 const unsignedPegin = await sdk.createAndFundPegin(500_000n, '0xRecipientRskAddress', signer)

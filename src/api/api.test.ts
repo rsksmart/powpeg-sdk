@@ -150,6 +150,20 @@ describe('ApiService', () => {
     })
   })
 
+  it('should name a timeout instead of reporting it as no response', async () => {
+    mockIsAxiosError.mockReturnValue(true)
+    mockGet.mockRejectedValue({ code: 'ECONNABORTED', message: 'timeout of 10000ms exceeded', request: {} })
+
+    await expect(apiService.getFeeRate('fast')).rejects.toThrow('The API did not respond in time')
+    await expect(apiService.getFeeRate('fast')).rejects.not.toThrow('No response from server')
+  })
+
+  it('should use the configured request timeout', () => {
+    new ApiService('TEST', undefined, 1000, 2_500)
+
+    expect(mockCreate).toHaveBeenLastCalledWith(expect.objectContaining({ timeout: 2_500 }))
+  })
+
   it('should throw API Error for network errors', async () => {
     const errorRequest = { request: {} }
     mockIsAxiosError.mockReturnValue(true)
