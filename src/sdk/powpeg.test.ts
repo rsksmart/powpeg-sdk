@@ -168,6 +168,33 @@ describe('sdk', () => {
   it('should fail to create a peg-out with an amount below the minimum', async () => {
     await expect(sdk.createPegout('0.001', rskAddresses[0])).rejects.toThrowError(AmountBelowMinError)
   })
+  it('should refuse to build a peg-in when the signer derives no addresses', async () => {
+    const emptySigner = {
+      getNonChangeAddresses: vi.fn().mockResolvedValue([]),
+      getChangeAddresses: vi.fn().mockResolvedValue([]),
+      signTransaction: vi.fn(),
+    } satisfies BitcoinSigner
+
+    await expect(sdk.createPegin(500_000n, rskAddresses[0], undefined, emptySigner)).rejects.toThrowError(SigningError)
+  })
+
+  it('should still build a peg-in when every derived change address has been used', async () => {
+    const usedSigner = {
+      getNonChangeAddresses: vi.fn().mockResolvedValue(btcAddresses.slice(1)),
+      getChangeAddresses: vi.fn().mockResolvedValue(btcAddresses.slice(0, 1)),
+      signTransaction: vi.fn(),
+    } satisfies BitcoinSigner
+    mockedDataSource.getAddressDetails.mockImplementation((address: string) => ({ address, balance: 1_000_000, txCount: 3 }))
+    const usedFundingTx = buildFundingTx(2_000_000, 0, 31)
+    mockedDataSource.getTxHex.mockResolvedValue(usedFundingTx.hex)
+    const utxo = { address: btcAddresses[1], txid: usedFundingTx.txid, vout: 0, amount: 2_000_000n }
+
+    const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [utxo], usedSigner)
+    const funded = await sdk.fundPegin(psbt, 'average')
+
+    expect(funded.psbt.txOutputs.at(-1)?.address).toBe(utxo.address)
+  })
+
   it('should reject an amount below the network minimum without reading the Bridge', async () => {
     const localSdk = new PowPegSDK(mockedSigner, mockedDataSource, 'TEST')
     const feePerKb = vi.spyOn(localSdk['bridge'], 'getFeePerKb')

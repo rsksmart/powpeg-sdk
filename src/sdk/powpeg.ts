@@ -146,6 +146,9 @@ export class PowPegSDK {
   private async getAddressesGroupedByUsage(signer: BitcoinSigner) {
     const nonChangeAddresses = await signer.getNonChangeAddresses(this.maxBundleSize)
     const changeAddresses = await signer.getChangeAddresses(this.maxBundleSize)
+    if (!nonChangeAddresses.length || !changeAddresses.length) {
+      throw new sdkErrors.SigningError('The signer derived no addresses; a peg-in needs a refund and a change address.')
+    }
     const [nonChangeDetails, changeDetails] = await Promise.all([
       this.getAddressesWithDetails(nonChangeAddresses),
       this.getAddressesWithDetails(changeAddresses),

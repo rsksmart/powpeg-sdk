@@ -47,7 +47,7 @@ export class InvalidAddressError extends Error {
   }
 }
 
-/** Thrown when the configured BitcoinSigner doesn't return a signed transaction, so there is nothing to broadcast. */
+/** Thrown when the configured BitcoinSigner doesn't return what the SDK asked it for: no derived addresses, or no signed transaction to broadcast. */
 export class SigningError extends Error {
   constructor(message?: string) {
     super(message)
