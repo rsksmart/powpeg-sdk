@@ -1,4 +1,4 @@
-import axios, { type AxiosInstance } from 'axios'
+import axios, { type AxiosInstance, type AxiosResponse } from 'axios'
 import { TxType } from '../types'
 import type { BitcoinDataSource, FeeLevel, Utxo, AddressWithDetails, StatusData, Feature } from '../types'
 import { type Network } from '../constants'
@@ -39,6 +39,24 @@ function unwrapJsonMessage(message: string): string {
   ]) ?? message
 }
 
+function originOf(url?: string): string | undefined {
+  if (!url) {
+    return undefined
+  }
+  try {
+    return new URL(url).origin
+  }
+  catch {
+    return undefined
+  }
+}
+
+/** The URL a response was ultimately served from: `responseURL` on the browser adapter, `res.responseUrl` on Node's. */
+function finalUrlOf(response: AxiosResponse): string | undefined {
+  const request = response.request as { responseURL?: string, res?: { responseUrl?: string } } | undefined
+  return request?.responseURL ?? request?.res?.responseUrl
+}
+
 function getErrorMessage(data: unknown): string {
   const message = firstNonEmptyString([
     (data as { error?: { message?: unknown } })?.error?.message,
@@ -58,20 +76,39 @@ export class ApiService implements BitcoinDataSource {
     fast: 1,
   }
   private api: AxiosInstance
+  private apiOrigin?: string
   private requestTimeoutMs = 10_000
   private maxResponseBytes = 10 * 1024 * 1024
 
   constructor(network: Network, apiUrl?: string, private readonly maxFeeRateSatPerByte = 1000) {
+    const baseURL = apiUrl ?? this.apiUrls[network]
+    this.apiOrigin = originOf(baseURL)
     this.api = axios.create({
-      baseURL: apiUrl ?? this.apiUrls[network],
+      baseURL,
       timeout: this.requestTimeoutMs,
       maxContentLength: this.maxResponseBytes,
       maxBodyLength: this.maxResponseBytes,
       maxRedirects: 0,
     })
+    this.api.interceptors.response.use((response) => this.assertSameOrigin(response))
+  }
+
+  /**
+   * Rejects a response served by a host other than the configured one. `maxRedirects` is only honoured
+   * by the Node adapter, so the final URL is compared here, where both adapters expose it.
+   */
+  private assertSameOrigin(response: AxiosResponse): AxiosResponse {
+    const responseOrigin = originOf(finalUrlOf(response))
+    if (this.apiOrigin && responseOrigin && responseOrigin !== this.apiOrigin) {
+      throw new APIError(`The response came from ${responseOrigin}, not the configured ${this.apiOrigin}.`)
+    }
+    return response
   }
 
   private handleError(error: unknown): never {
+    if (error instanceof APIError) {
+      throw error
+    }
     if (axios.isAxiosError(error)) {
       if (error.response) {
         const { status, data } = error.response

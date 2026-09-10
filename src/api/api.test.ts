@@ -2,18 +2,19 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { ApiService } from './api'
 import { APIError } from '../errors'
 
-const { mockGet, mockPost, mockIsAxiosError, mockCreate } = vi.hoisted(() => ({
+const { mockGet, mockPost, mockIsAxiosError, mockCreate, mockUse } = vi.hoisted(() => ({
   mockGet: vi.fn(),
   mockPost: vi.fn(),
   mockIsAxiosError: vi.fn(),
   mockCreate: vi.fn(),
+  mockUse: vi.fn(),
 }))
 
 vi.mock('axios', () => ({
   default: {
     create: (...args: unknown[]) => {
       mockCreate(...args)
-      return { get: mockGet, post: mockPost }
+      return { get: mockGet, post: mockPost, interceptors: { response: { use: mockUse } } }
     },
     isAxiosError: mockIsAxiosError,
   },
@@ -119,6 +120,34 @@ describe('ApiService', () => {
 
     await expect(apiService.getFeeRate('fast')).rejects.toThrow('responded with a redirect (302)')
     await expect(apiService.getFeeRate('fast')).rejects.not.toThrow('Server error')
+  })
+
+  describe('response origin', () => {
+    const interceptor = () => mockUse.mock.calls[0][0] as (response: unknown) => unknown
+    const responseFrom = (url?: string) => ({
+      status: 200,
+      data: { federationAddress: 'whatever' },
+      request: url ? { responseURL: url } : undefined,
+    })
+
+    it('should pass a response served by the configured host', () => {
+      const response = responseFrom('https://api.2wp.testnet.rootstock.io/pegin-configuration')
+
+      expect(interceptor()(response)).toBe(response)
+    })
+
+    it('should reject a response served by another host', () => {
+      expect(() => interceptor()(responseFrom('https://elsewhere.example/pegin-configuration')))
+        .toThrowError(APIError)
+      expect(() => interceptor()(responseFrom('https://elsewhere.example/pegin-configuration')))
+        .toThrowError('came from https://elsewhere.example')
+    })
+
+    it('should pass a response whose final URL cannot be determined', () => {
+      const response = responseFrom()
+
+      expect(interceptor()(response)).toBe(response)
+    })
   })
 
   it('should throw API Error for network errors', async () => {
