@@ -51,6 +51,7 @@ const createMockProvider = (balance = mockValues.highBalance) => ({
   getBalance: vi.fn().mockResolvedValue(balance),
   estimateGas: vi.fn().mockResolvedValue(mockValues.estimatedGas),
   getGasPrice: vi.fn().mockResolvedValue(mockValues.gasPrice),
+  waitForTransaction: vi.fn(),
 })
 
 const mockProvider = createMockProvider()
@@ -157,6 +158,19 @@ describe('sdk', () => {
 
     expect(pegout).toBeDefined()
   })
+  it('should wait for the peg-out receipt on the SDK RPC node even if the signer provider never answers', async () => {
+    const receipt = { transactionHash: '0xabc', status: 1 } as ethers.providers.TransactionReceipt
+    mockProvider.waitForTransaction.mockResolvedValue(receipt)
+    const signer = {
+      sendTransaction: vi.fn().mockResolvedValue({ hash: receipt.transactionHash }),
+      provider: { waitForTransaction: vi.fn(() => new Promise(() => undefined)) },
+    } as unknown as ethers.Signer
+    const tx = { from: rskAddresses[0], to: rskAddresses[0], value: '1' }
+
+    await expect(sdk.signAndBroadcastPegout(tx, signer)).resolves.toEqual(receipt)
+    expect(signer.sendTransaction).toHaveBeenCalledWith(tx)
+  })
+
   it('should estimate peg-out fees', async () => {
     const fees = await sdk.estimatePegoutFees('0.005', rskAddresses[0])
 
