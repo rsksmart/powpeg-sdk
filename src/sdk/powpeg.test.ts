@@ -3,7 +3,7 @@ import { networks as bitcoinJsNetworks, payments, Psbt, Transaction } from 'bitc
 import { PowPegSDK } from './powpeg'
 import { ApiService } from '../api/api'
 import type { BitcoinSigner, BitcoinDataSource } from '../types'
-import { AmountBelowMinError, NotEnoughFundsError, InvalidAddressError, FederationAddressError, InvalidFeeRateError, SigningError, WrongNetworkError, PegoutRejectedError } from '../errors'
+import { AmountBelowMinError, NotEnoughFundsError, InvalidAddressError, FederationAddressError, InvalidFeeRateError, SigningError, WrongNetworkError, PegoutRejectedError, UnsupportedSenderError } from '../errors'
 import { bridge as bridgePrecompile } from '@rsksmart/rsk-precompiled-abis'
 import { ethers } from '@rsksmart/bridges-core-sdk'
 import { TxType, PegoutStatuses, PeginStatuses } from '../types'
@@ -65,6 +65,7 @@ const mockValues = {
 const createMockProvider = (balance = mockValues.highBalance) => ({
   ...Object.create(ethers.providers.JsonRpcProvider.prototype),
   getBalance: vi.fn().mockResolvedValue(balance),
+  getCode: vi.fn().mockResolvedValue('0x'),
   estimateGas: vi.fn().mockResolvedValue(mockValues.estimatedGas),
   getGasPrice: vi.fn().mockResolvedValue(mockValues.gasPrice),
 })
@@ -168,6 +169,24 @@ describe('sdk', () => {
   it('should fail to create a peg-out with an amount below the minimum', async () => {
     await expect(sdk.createPegout('0.001', rskAddresses[0])).rejects.toThrowError(AmountBelowMinError)
   })
+  it('should refuse a peg-out from a contract account before anything is sent', async () => {
+    mockProvider.getCode.mockResolvedValueOnce('0x60806040523480156100')
+    const signer = {
+      getChainId: vi.fn().mockResolvedValue(31),
+      sendTransaction: vi.fn(),
+    } as unknown as ethers.Signer
+
+    await expect(sdk.createPegout('0.005', rskAddresses[0])).rejects.toThrowError(UnsupportedSenderError)
+    expect(signer.sendTransaction).not.toHaveBeenCalled()
+  })
+
+  it('should read both the sender\'s balance and its code', async () => {
+    await sdk.createPegout('0.005', rskAddresses[0])
+
+    expect(mockProvider.getBalance).toHaveBeenCalledWith(rskAddresses[0])
+    expect(mockProvider.getCode).toHaveBeenCalledWith(rskAddresses[0])
+  })
+
   it('should refuse to build a peg-in when the signer derives no addresses', async () => {
     const emptySigner = {
       getNonChangeAddresses: vi.fn().mockResolvedValue([]),

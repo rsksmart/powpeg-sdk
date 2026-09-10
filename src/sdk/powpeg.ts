@@ -623,11 +623,18 @@ export class PowPegSDK {
    * @param {string} senderAccount - Rootstock address that will send the peg-out.
    * @returns The unsigned transaction request and its estimated Bitcoin/Rootstock fees.
    * @throws {NotEnoughFundsError} If `senderAccount`'s balance is lower than `amount`.
+   * @throws {UnsupportedSenderError} If `senderAccount` is a contract account.
    */
   async createPegout(amount: string, senderAccount: string) {
     const fees = await this.estimatePegoutFees(amount, senderAccount)
     const amountBN = ethers.utils.parseUnits(amount, 18).toBigInt()
-    const balance = await this.rskProvider.getBalance(senderAccount)
+    const [balance, senderCode] = await Promise.all([
+      this.rskProvider.getBalance(senderAccount),
+      this.rskProvider.getCode(senderAccount),
+    ])
+    if (senderCode !== '0x') {
+      throw new sdkErrors.UnsupportedSenderError(`${senderAccount} is a contract account; the Bridge only releases BTC for peg-outs sent from an externally owned account.`)
+    }
     if (balance.lt(amountBN)) {
       throw new sdkErrors.NotEnoughFundsError(`Requested amount ${amountBN} is greater than current balance ${balance}.`)
     }

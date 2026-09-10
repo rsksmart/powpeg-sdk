@@ -91,3 +91,15 @@ export class PegoutRejectedError extends Error {
     this.amount = amount
   }
 }
+
+/**
+ * Thrown when the account asked to send a peg-out cannot receive BTC for it. The Bridge only releases
+ * BTC for release requests that arrive from an externally owned account, so a contract account is
+ * refused before any value is sent.
+ */
+export class UnsupportedSenderError extends Error {
+  constructor(message?: string) {
+    super(message)
+    this.name = 'UnsupportedSenderError'
+  }
+}
