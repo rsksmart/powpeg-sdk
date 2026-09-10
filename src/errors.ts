@@ -72,16 +72,22 @@ export class WrongNetworkError extends Error {
 }
 
 /**
- * Thrown when the Bridge accepted the peg-out transaction but rejected the release request itself,
- * refunding the amount instead of queueing it. `reason` carries the Bridge's own code: 1 low amount,
- * 2 caller is a contract, 3 fee above value.
+ * Thrown when the peg-out transaction was mined but the Bridge rejected the release request instead of
+ * queueing it. `reason` carries the Bridge's own code: 1 the amount was below its minimum, 2 the caller
+ * is a contract, 3 the fee would exceed the amount. Reasons 1 and 3 refund the amount; **reason 2 does
+ * not** — the Bridge keeps it. `txHash` is the mined transaction, kept on the error because it is the
+ * only handle to an on-chain transaction the caller has already paid for.
  */
 export class PegoutRejectedError extends Error {
   readonly reason: number
+  readonly txHash: string
+  readonly amount: bigint
 
-  constructor(reason: number, message?: string) {
+  constructor(reason: number, txHash: string, amount: bigint, message?: string) {
     super(message)
     this.name = 'PegoutRejectedError'
     this.reason = reason
+    this.txHash = txHash
+    this.amount = amount
   }
 }

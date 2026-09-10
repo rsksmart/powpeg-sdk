@@ -31,7 +31,13 @@ export class PowPegSDK {
   private pegoutSimulationOutputs = 2
   private pegoutScriptSigSize = 36
   private pegoutSignatureSize = 73
+  private pegoutDeployedSignatureSize = 72
   private weiPerSatoshi = 10_000_000_000n
+  private pegoutRejectionReasons: Record<number, string> = {
+    1: 'the amount was below the minimum the Bridge enforces, and was refunded',
+    2: 'peg-outs are only allowed from an externally owned account and the caller is a contract; the amount was NOT refunded and remains held by the Bridge',
+    3: 'the fee would have exceeded the amount being released, and the amount was refunded',
+  }
   private btcNetworkConfig: typeof networks[Network]
   private bridge: Bridge
   private api: ApiService
@@ -451,8 +457,7 @@ export class PowPegSDK {
    * Witness bytes each input contributes once signed: the stack item count, the two empty elements the
    * federation's script pushes, one signature per required signer, and the redeem script itself.
    */
-  private estimateSigningSizePerInput(redeemScript: string, threshold: number): number {
-    const redeemScriptSize = Buffer.from(remove0x(redeemScript), 'hex').length
+  private estimateSigningSizePerInput(redeemScriptSize: number, threshold: number): number {
     const stackItemCount = threshold + 3
     return this.varIntSize(stackItemCount)
       + 1
@@ -462,21 +467,90 @@ export class PowPegSDK {
   }
 
   /**
-   * Virtual size of the transaction the Bridge would build for a regular peg-out: two inputs spending
-   * federation UTXOs and two outputs paying the federation, weighted as per BIP141.
+   * Resolves the federation's output script from its redeem script, and with it the transaction format
+   * the Bridge builds. The address is required to derive from the redeem script: a P2SH wrapping the
+   * witness program means P2SH-P2WSH, a P2SH wrapping the redeem script itself means a legacy multisig.
    */
-  private simulatePegoutVSize(redeemScript: string, threshold: number, federationAddress: string): number {
-    const transaction = new Transaction()
-    for (let i = 0; i < this.pegoutSimulationInputs; i++) {
-      transaction.addInput(Buffer.alloc(32), 0, undefined, Buffer.alloc(this.pegoutScriptSigSize))
+  private resolveFederationOutput(redeemScript: Buffer, federationAddress: string): { outputScript: Buffer, isSegwit: boolean } {
+    const network = this.btcNetworkConfig.lib
+    const candidates: { outputScript: Buffer, isSegwit: boolean }[] = []
+    try {
+      const segwit = payments.p2sh({ redeem: payments.p2wsh({ redeem: { output: redeemScript }, network }), network })
+      if (segwit.output && federationAddress === segwit.address) {
+        candidates.push({ outputScript: segwit.output, isSegwit: true })
+      }
+      const legacy = payments.p2sh({ redeem: { output: redeemScript }, network })
+      if (legacy.output && federationAddress === legacy.address) {
+        candidates.push({ outputScript: legacy.output, isSegwit: false })
+      }
     }
-    const outputScript = address.toOutputScript(federationAddress, this.btcNetworkConfig.lib)
-    for (let i = 0; i < this.pegoutSimulationOutputs; i++) {
+    catch (error) {
+      throw new sdkErrors.FederationAddressError(`The active powpeg redeem script could not be interpreted: ${error instanceof Error ? error.message : String(error)}`)
+    }
+    if (!candidates.length) {
+      throw new sdkErrors.FederationAddressError(`Federation address ${federationAddress} is not derivable from the active powpeg redeem script.`)
+    }
+    return candidates[0]
+  }
+
+  private buildPegoutSimulation(outputScript: Buffer, inputs: number, outputs: number, scriptSig?: Buffer): Transaction {
+    const transaction = new Transaction()
+    if (scriptSig) {
+      for (let i = 0; i < inputs; i++) {
+        transaction.addInput(Buffer.alloc(32), 0, undefined, scriptSig)
+      }
+    }
+    for (let i = 0; i < outputs; i++) {
       transaction.addOutput(outputScript, 0)
     }
-    const baseSize = transaction.byteLength(false)
-    const witnessSize = this.pegoutSimulationInputs * this.estimateSigningSizePerInput(redeemScript, threshold)
+    return transaction
+  }
+
+  /**
+   * Size the Bridge computes for a P2SH-P2WSH federation: the transaction is serialized without its
+   * inputs and a fixed script-sig size is added per input instead.
+   */
+  private pegoutVSizeSegwit(redeemScript: Buffer, threshold: number, outputScript: Buffer, inputs: number, outputs: number): number {
+    const baseSize = this.buildPegoutSimulation(outputScript, inputs, outputs).byteLength(false)
+      + inputs * this.pegoutScriptSigSize
+    const signingSize = threshold * inputs * this.pegoutDeployedSignatureSize
+    const totalSize = baseSize + signingSize + inputs * redeemScript.length
+    return Math.floor((totalSize + 3 * baseSize) / 4)
+  }
+
+  /**
+   * Size the Bridge computes for a federation that is not P2SH-P2WSH: plain serialized bytes, with the
+   * redeem script spent through each input's script sig and no witness discount.
+   */
+  private pegoutVSizeNonSegwit(redeemScript: Buffer, threshold: number, outputScript: Buffer, inputs: number, outputs: number): number {
+    const baseSize = this.buildPegoutSimulation(outputScript, inputs, outputs, redeemScript).byteLength(false)
+    return baseSize + threshold * inputs * this.pegoutDeployedSignatureSize
+  }
+
+  /**
+   * Size the Bridge computes once RSKIP378 is active: every input is serialized, and its witness carries
+   * one signature per required signer plus the redeem script, weighted as per BIP141.
+   */
+  private pegoutVSizeAfterRskip378(redeemScript: Buffer, threshold: number, outputScript: Buffer, inputs: number, outputs: number): number {
+    const baseSize = this.buildPegoutSimulation(outputScript, inputs, outputs, Buffer.alloc(this.pegoutScriptSigSize)).byteLength(false)
+    const witnessSize = inputs * this.estimateSigningSizePerInput(redeemScript.length, threshold)
     return Math.floor((4 * baseSize + witnessSize) / 4)
+  }
+
+  /**
+   * Virtual size of the transaction the Bridge would build for a regular peg-out, taken as the larger of
+   * what it computes today and what it will compute once RSKIP378 activates, so the derived minimum is
+   * never below the one the Bridge enforces under either rule.
+   */
+  private simulatePegoutVSize(redeemScriptHex: string, threshold: number, federationAddress: string): number {
+    const redeemScript = Buffer.from(remove0x(redeemScriptHex), 'hex')
+    const { outputScript, isSegwit } = this.resolveFederationOutput(redeemScript, federationAddress)
+    const inputs = this.pegoutSimulationInputs
+    const outputs = this.pegoutSimulationOutputs
+    const deployed = isSegwit
+      ? this.pegoutVSizeSegwit(redeemScript, threshold, outputScript, inputs, outputs)
+      : this.pegoutVSizeNonSegwit(redeemScript, threshold, outputScript, inputs, outputs)
+    return Math.max(deployed, this.pegoutVSizeAfterRskip378(redeemScript, threshold, outputScript, inputs, outputs))
   }
 
   private async getMinimumPegoutSatoshis(): Promise<bigint> {
@@ -579,7 +653,13 @@ export class PowPegSDK {
     if (receipt) {
       const rejected = this.bridge.findRejectedPegout(receipt.logs ?? [])
       if (rejected) {
-        throw new sdkErrors.PegoutRejectedError(rejected.reason, `The Bridge rejected the peg-out of ${rejected.amount} wei and refunded it.`)
+        const reason = this.pegoutRejectionReasons[rejected.reason] ?? `the Bridge reported reason code ${rejected.reason}`
+        throw new sdkErrors.PegoutRejectedError(
+          rejected.reason,
+          hash,
+          rejected.amount,
+          `The Bridge rejected the peg-out of ${rejected.amount} wei in transaction ${hash}: ${reason}.`,
+        )
       }
     }
 

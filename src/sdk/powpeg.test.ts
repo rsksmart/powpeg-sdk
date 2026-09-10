@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { Psbt, Transaction } from 'bitcoinjs-lib'
+import { networks as bitcoinJsNetworks, payments, Psbt, Transaction } from 'bitcoinjs-lib'
 import { PowPegSDK } from './powpeg'
 import { ApiService } from '../api/api'
 import type { BitcoinSigner, BitcoinDataSource } from '../types'
@@ -35,8 +35,19 @@ const rskAddresses = [
   '0x8c2f0abf2b1c4d4f7f5b6e3c3f2a6b7f7c7c1d9d',
 ]
 
+// The mocked federation keeps the shape of the live testnet one: a 491-byte redeem script wrapped as
+// P2SH-P2WSH, with the address derived from it so the two stay consistent.
+const mockRedeemScript = Buffer.concat([
+  ...Array.from({ length: 14 }, (_, i) => Buffer.concat([Buffer.from([0x21]), Buffer.alloc(33, i + 1)])),
+  Buffer.alloc(15, 0xae),
+])
+const mockFederationAddress = payments.p2sh({
+  redeem: payments.p2wsh({ redeem: { output: mockRedeemScript }, network: bitcoinJsNetworks.testnet }),
+  network: bitcoinJsNetworks.testnet,
+}).address as string
+
 const mockValues = {
-  federationAddress: '2MskK2P1Qw9QbeZ6MG5jmeWMX2d4MFANgkD',
+  federationAddress: mockFederationAddress,
   estimatedFeeForNextPegOut: ethers.BigNumber.from(45_500n),
   queuedPegoutsCount: ethers.BigNumber.from(2n),
   highBalance: ethers.BigNumber.from(1_000_000_000_000_000_000n),
@@ -48,7 +59,7 @@ const mockValues = {
   // Live testnet federation at the time of writing: 6-of-11, 491-byte P2SH-P2WSH ERP redeem script.
   feePerKb: 8_000n,
   federationThreshold: 6,
-  redeemScript: `0x${'64'.repeat(491)}`,
+  redeemScript: `0x${mockRedeemScript.toString('hex')}`,
 }
 
 const createMockProvider = (balance = mockValues.highBalance) => ({
@@ -66,7 +77,7 @@ const mockApiService = {
   getPeginConfiguration: vi.fn().mockResolvedValue({
     minValue: 500_000,
     maxValue: 4_199_866_190_155_915,
-    federationAddress: '2MskK2P1Qw9QbeZ6MG5jmeWMX2d4MFANgkD',
+    federationAddress: mockValues.federationAddress,
     btcConfirmations: 100,
   }),
 }
@@ -174,12 +185,59 @@ describe('sdk', () => {
     expect(fees.rootstockFee).toBe(300_006_150_000n)
   })
 
-  it('should size a peg-out the way the Bridge does', () => {
-    // Vector from rskj's BridgeUtilsTest.testCalculatePegoutTxSize_2Inputs_2Outputs:
-    // a P2SH-P2WSH ERP federation requiring 7 signatures, whose redeem script is 409 bytes, sizes at 694 vB.
-    const vsize = sdk['simulatePegoutVSize'](`0x${'64'.repeat(409)}`, 7, mockValues.federationAddress)
+  describe('peg-out size, against rskj', () => {
+    // Outputs pay the federation, which is P2SH under both formats, so a bare P2SH script is
+    // representative for sizing.
+    const p2shOutput = payments.p2sh({ hash: Buffer.alloc(20) }).output as Buffer
+    // A P2SH-P2WSH ERP federation of 13 members plus 4 emergency keys: 445 + 139 + 9 bytes.
+    const erpRedeemScript = Buffer.alloc(593, 0x21)
+    // The same 13 members as a standard multisig: OP_7 + 13 pushes + OP_13 + OP_CHECKMULTISIG.
+    const standardRedeemScript = Buffer.alloc(445, 0x21)
 
-    expect(vsize).toBe(694)
+    it('should match rskj for a P2SH-P2WSH federation', () => {
+      // BridgeUtilsTest.testCalculatePegoutTxSize_{2,9}Inputs_2Outputs, segwit assertions.
+      expect(sdk['pegoutVSizeSegwit'](erpRedeemScript, 7, p2shOutput, 2, 2)).toBe(694)
+      expect(sdk['pegoutVSizeSegwit'](erpRedeemScript, 7, p2shOutput, 9, 2)).toBe(2866)
+    })
+
+    it('should match rskj for a federation that is not P2SH-P2WSH', () => {
+      // Same tests, standard-multisig assertions.
+      expect(sdk['pegoutVSizeNonSegwit'](standardRedeemScript, 7, p2shOutput, 2, 2)).toBe(2058)
+      expect(sdk['pegoutVSizeNonSegwit'](standardRedeemScript, 7, p2shOutput, 9, 2)).toBe(9002)
+    })
+
+    it('should size the post-RSKIP378 rule larger than the one in force', () => {
+      // rskj publishes no expected value for this branch, so this pins our own port of
+      // BridgeUtils.simulateSegwitPegoutVSize and its relation to the rule in force today.
+      const afterRskip378 = sdk['pegoutVSizeAfterRskip378'](erpRedeemScript, 7, p2shOutput, 2, 2)
+
+      expect(afterRskip378).toBe(786)
+      expect(afterRskip378).toBeGreaterThan(sdk['pegoutVSizeSegwit'](erpRedeemScript, 7, p2shOutput, 2, 2))
+    })
+
+    it('should take the larger of the two rules, so the minimum is never below the Bridge\'s', () => {
+      // The mocked federation: 491-byte redeem script, 6 signatures. In force today it sizes at 607.
+      const vsize = sdk['simulatePegoutVSize'](mockValues.redeemScript, 6, mockValues.federationAddress)
+
+      expect(vsize).toBe(698)
+    })
+
+    it('should recognise a federation that is not P2SH-P2WSH from its address', () => {
+      const legacyAddress = payments.p2sh({ redeem: { output: mockRedeemScript }, network: bitcoinJsNetworks.testnet }).address as string
+
+      expect(sdk['resolveFederationOutput'](mockRedeemScript, mockValues.federationAddress).isSegwit).toBe(true)
+      expect(sdk['resolveFederationOutput'](mockRedeemScript, legacyAddress).isSegwit).toBe(false)
+    })
+
+    it('should reject a federation address that does not derive from the redeem script', () => {
+      expect(() => sdk['resolveFederationOutput'](mockRedeemScript, btcAddresses[1]))
+        .toThrowError(FederationAddressError)
+    })
+
+    it('should reject a redeem script bitcoinjs cannot interpret', () => {
+      expect(() => sdk['resolveFederationOutput'](Buffer.alloc(491, 0x64), mockValues.federationAddress))
+        .toThrowError(FederationAddressError)
+    })
   })
 
   it('should allow a peg-out above the network minimum the Bridge enforces', async () => {
@@ -195,27 +253,48 @@ describe('sdk', () => {
     await expect(strictSdk.createPegout('0.005', rskAddresses[0])).rejects.toThrowError(AmountBelowMinError)
   })
 
-  it('should surface a peg-out the Bridge rejected instead of reporting success', async () => {
+  const rejectedPegoutSigner = (reason: number) => {
     const bridgeInterface = new ethers.utils.Interface(bridgePrecompile.abi)
     const { data, topics } = bridgeInterface.encodeEventLog(
       bridgeInterface.getEvent('release_request_rejected'),
-      [ethers.constants.AddressZero, 500_000_000_000_000n, 1],
+      [ethers.constants.AddressZero, 500_000_000_000_000n, reason],
     )
     const receipt = {
-      transactionHash: '0xrejected',
+      transactionHash: '0xsent',
       logs: [{ address: '0x0000000000000000000000000000000001000006', data, topics }],
     }
-    const signer = {
+    return {
       getChainId: vi.fn().mockResolvedValue(31),
       sendTransaction: vi.fn().mockResolvedValue({ hash: '0xsent' }),
       provider: { waitForTransaction: vi.fn().mockResolvedValue(receipt) },
     } as unknown as ethers.Signer
+  }
 
+  it('should surface a peg-out the Bridge rejected instead of reporting success', async () => {
     const { tx } = await sdk.createPegout('0.005', rskAddresses[0])
-    const error = await sdk.signAndBroadcastPegout(tx, signer).catch((e) => e)
+    const error = await sdk.signAndBroadcastPegout(tx, rejectedPegoutSigner(1)).catch((e) => e)
 
     expect(error).toBeInstanceOf(PegoutRejectedError)
     expect(error.reason).toBe(1)
+    expect(error.amount).toBe(500_000_000_000_000n)
+    expect(error.message).toContain('was refunded')
+  })
+
+  it('should keep the transaction hash of a rejected peg-out on the error', async () => {
+    const { tx } = await sdk.createPegout('0.005', rskAddresses[0])
+    const error = await sdk.signAndBroadcastPegout(tx, rejectedPegoutSigner(1)).catch((e) => e)
+
+    expect(error.txHash).toBe('0xsent')
+    expect(error.message).toContain('0xsent')
+  })
+
+  it('should not claim a refund when the Bridge rejected the caller for being a contract', async () => {
+    const { tx } = await sdk.createPegout('0.005', rskAddresses[0])
+    const error = await sdk.signAndBroadcastPegout(tx, rejectedPegoutSigner(2)).catch((e) => e)
+
+    expect(error.reason).toBe(2)
+    expect(error.message).toContain('NOT refunded')
+    expect(error.message).toContain('remains held by the Bridge')
   })
 
   it('should pin the configured network on the Rootstock provider', () => {
@@ -290,7 +369,7 @@ describe('sdk', () => {
           btc: {
             txId: 'btc_tx_hash_123',
             creationDate: '2024-01-15T10:30:00Z',
-            federationAddress: '2MskK2P1Qw9QbeZ6MG5jmeWMX2d4MFANgkD',
+            federationAddress: mockValues.federationAddress,
             amountTransferred: 100000,
             fees: 1000,
             refundAddress: 'mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn',
@@ -322,7 +401,7 @@ describe('sdk', () => {
           btc: {
             txId: 'btc_tx_hash_456',
             creationDate: '2024-01-15T10:30:00Z',
-            federationAddress: '2MskK2P1Qw9QbeZ6MG5jmeWMX2d4MFANgkD',
+            federationAddress: mockValues.federationAddress,
             amountTransferred: 50000,
             fees: 500,
             refundAddress: 'mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn',
@@ -596,8 +675,6 @@ describe('sdk', () => {
     })
 
     it('should reject a UTXO whose fetched transaction is not actually the one that was requested', async () => {
-      // A data source (hostile, or just wrong) that hands back an unrelated transaction —
-      // e.g. this could be used to trick a signer into trusting the wrong prevout.
       const wrongTx = buildFundingTx(2_000_000, 0, 99)
       const utxo = { address: btcAddresses[1], txid: fundingTx.txid, vout: 0, amount: 2_000_000n }
       const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [utxo])
@@ -616,9 +693,6 @@ describe('sdk', () => {
     })
 
     it('should block a retry after a mid-mutation failure instead of allowing it to double-mutate the PSBT', async () => {
-      // Two UTXOs sharing the same outpoint — the kind of duplicate a hostile or buggy data
-      // source could return — so the second `addInput` is what fails, after the funding
-      // context has already been deleted for this mutation attempt.
       const utxo = { address: btcAddresses[1], txid: fundingTx.txid, vout: 0, amount: 2_000_000n }
       const psbt = await sdk.createPegin(3_500_000n, rskAddresses[0], [utxo, { ...utxo }])
 
