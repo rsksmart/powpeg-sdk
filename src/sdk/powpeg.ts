@@ -710,10 +710,10 @@ export class PowPegSDK {
 
   /**
    * Sends a peg-out transaction (as returned by {@link createPegout}) using the given ethers signer
-   * and waits for it to be mined.
+   * and waits for it to be mined on the SDK's RSK RPC node.
    * @param {UnsignedPegout} tx - The peg-out transaction request, as returned by {@link createPegout}. Forwarded to the signer as given, so gas, nonce and fee fields set by the caller are honoured; only an absent chain id is filled in.
    * @param {ethers.Signer} signer - Ethers signer used to send the transaction.
-   * @returns The mined transaction receipt, if the signer's provider is set.
+   * @returns The mined transaction receipt.
    * @throws {WrongNetworkError} If the transaction's chain id, or the signer's chain, doesn't match the network the SDK was configured for.
    * @throws {TransactionRevertedError} If the transaction was mined but reverted.
    * @throws {PegoutRejectedError} If the transaction was mined but the Bridge rejected and refunded the release request.
@@ -737,7 +737,7 @@ export class PowPegSDK {
       throw new sdkErrors.WrongNetworkError(`Signer is on chain ${signerChainId}, but the SDK is configured for ${this.network} (chain ${expectedChainId}).`)
     }
     const { hash } = await signer.sendTransaction(request)
-    const receipt = await signer.provider?.waitForTransaction(hash)
+    const receipt = await this.rskProvider.waitForTransaction(hash)
     if (receipt) {
       if (receipt.status === 0) {
         throw new sdkErrors.TransactionRevertedError(hash, receipt, `The peg-out transaction ${hash} was mined but reverted; no BTC release was requested.`)

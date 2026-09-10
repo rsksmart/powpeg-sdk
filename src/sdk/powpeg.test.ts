@@ -81,6 +81,7 @@ const createMockProvider = (balance = mockValues.highBalance) => ({
   getCode: vi.fn().mockResolvedValue('0x'),
   estimateGas: vi.fn().mockResolvedValue(mockValues.estimatedGas),
   getGasPrice: vi.fn().mockResolvedValue(mockValues.gasPrice),
+  waitForTransaction: vi.fn(),
 })
 
 const mockProvider = createMockProvider()
@@ -436,6 +437,21 @@ describe('sdk', () => {
 
     expect(pegout).toBeDefined()
   })
+  it('should wait for the peg-out receipt on the SDK RPC node even if the signer provider never answers', async () => {
+    const receipt = { transactionHash: '0xabc', status: 1, logs: [] } as unknown as ethers.providers.TransactionReceipt
+    mockProvider.waitForTransaction.mockResolvedValueOnce(receipt)
+    const signer = {
+      getChainId: vi.fn().mockResolvedValue(31),
+      sendTransaction: vi.fn().mockResolvedValue({ hash: receipt.transactionHash }),
+      provider: { waitForTransaction: vi.fn(() => new Promise(() => undefined)) },
+    } as unknown as ethers.Signer
+    const { tx } = await sdk.createPegout('0.005', rskAddresses[0])
+
+    await expect(sdk.signAndBroadcastPegout(tx, signer)).resolves.toEqual(receipt)
+    expect(signer.sendTransaction).toHaveBeenCalledWith(tx)
+    expect(mockProvider.waitForTransaction).toHaveBeenCalledWith(receipt.transactionHash)
+  })
+
   it('should estimate peg-out fees', async () => {
     const fees = await sdk.estimatePegoutFees('0.005', rskAddresses[0])
 
@@ -539,10 +555,10 @@ describe('sdk', () => {
       transactionHash: '0xsent',
       logs: [{ address: '0x0000000000000000000000000000000001000006', data, topics }],
     }
+    mockProvider.waitForTransaction.mockResolvedValueOnce(receipt)
     return {
       getChainId: vi.fn().mockResolvedValue(31),
       sendTransaction: vi.fn().mockResolvedValue({ hash: '0xsent' }),
-      provider: { waitForTransaction: vi.fn().mockResolvedValue(receipt) },
     } as unknown as ethers.Signer
   }
 
@@ -626,11 +642,10 @@ describe('sdk', () => {
   })
 
   it('should send a peg-out when the signer is on the configured chain', async () => {
-    const waitForTransaction = vi.fn().mockResolvedValue({ transactionHash: '0xreceipt', logs: [] })
+    mockProvider.waitForTransaction.mockResolvedValueOnce({ transactionHash: '0xreceipt', logs: [] })
     const signer = {
       getChainId: vi.fn().mockResolvedValue(31),
       sendTransaction: vi.fn().mockResolvedValue({ hash: '0xsent' }),
-      provider: { waitForTransaction },
     } as unknown as ethers.Signer
 
     const { tx } = await sdk.createPegout('0.005', rskAddresses[0])
@@ -638,14 +653,13 @@ describe('sdk', () => {
 
     expect(signer.sendTransaction).toHaveBeenCalledWith(tx)
     expect(tx.chainId).toBe(31)
-    expect(waitForTransaction).toHaveBeenCalledWith('0xsent')
+    expect(mockProvider.waitForTransaction).toHaveBeenCalledWith('0xsent')
     expect(receipt).toEqual({ transactionHash: '0xreceipt', logs: [] })
   })
 
   const pegoutSigner = (chainId = 31) => ({
     getChainId: vi.fn().mockResolvedValue(chainId),
     sendTransaction: vi.fn().mockResolvedValue({ hash: '0xsent' }),
-    provider: { waitForTransaction: vi.fn().mockResolvedValue({ transactionHash: '0xreceipt', logs: [] }) },
   } as unknown as ethers.Signer)
 
   it('should forward every field the caller set to the signer', async () => {
@@ -659,10 +673,10 @@ describe('sdk', () => {
   })
 
   it('should surface a peg-out that mined but reverted instead of returning its receipt', async () => {
+    mockProvider.waitForTransaction.mockResolvedValueOnce({ transactionHash: '0xmined', status: 0, gasUsed: 21_000, logs: [] })
     const signer = {
       getChainId: vi.fn().mockResolvedValue(31),
       sendTransaction: vi.fn().mockResolvedValue({ hash: '0xsent' }),
-      provider: { waitForTransaction: vi.fn().mockResolvedValue({ transactionHash: '0xmined', status: 0, gasUsed: 21_000, logs: [] }) },
     } as unknown as ethers.Signer
 
     const { tx } = await sdk.createPegout('0.005', rskAddresses[0])
@@ -674,15 +688,27 @@ describe('sdk', () => {
   })
 
   it('should return the receipt of a peg-out that mined without a status field', async () => {
+    mockProvider.waitForTransaction.mockResolvedValueOnce({ transactionHash: '0xsent', logs: [] })
     const signer = {
       getChainId: vi.fn().mockResolvedValue(31),
       sendTransaction: vi.fn().mockResolvedValue({ hash: '0xsent' }),
-      provider: { waitForTransaction: vi.fn().mockResolvedValue({ transactionHash: '0xsent', logs: [] }) },
     } as unknown as ethers.Signer
 
     const { tx } = await sdk.createPegout('0.005', rskAddresses[0])
 
     await expect(sdk.signAndBroadcastPegout(tx, signer)).resolves.toEqual({ transactionHash: '0xsent', logs: [] })
+  })
+
+  it('should surface a reverted peg-out even when the signer has no provider', async () => {
+    mockProvider.waitForTransaction.mockResolvedValueOnce({ transactionHash: '0xmined', status: 0, logs: [] })
+    const signer = {
+      getChainId: vi.fn().mockResolvedValue(31),
+      sendTransaction: vi.fn().mockResolvedValue({ hash: '0xsent' }),
+    } as unknown as ethers.Signer
+
+    const { tx } = await sdk.createPegout('0.005', rskAddresses[0])
+
+    await expect(sdk.signAndBroadcastPegout(tx, signer)).rejects.toThrow(TransactionRevertedError)
   })
 
   it('should not send a peg-out addressed anywhere but the bridge', async () => {
