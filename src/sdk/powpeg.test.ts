@@ -168,6 +168,21 @@ describe('sdk', () => {
   it('should fail to create a peg-out with an amount below the minimum', async () => {
     await expect(sdk.createPegout('0.001', rskAddresses[0])).rejects.toThrowError(AmountBelowMinError)
   })
+  it('should reject an amount below the network minimum without reading the Bridge', async () => {
+    const localSdk = new PowPegSDK(mockedSigner, mockedDataSource, 'TEST')
+    const feePerKb = vi.spyOn(localSdk['bridge'], 'getFeePerKb')
+    const redeemScript = vi.spyOn(localSdk['bridge'], 'getActivePowpegRedeemScript')
+    const threshold = vi.spyOn(localSdk['bridge'], 'getFederationThreshold')
+    const federationAddress = vi.spyOn(localSdk['bridge'], 'getFederationAddress')
+
+    await expect(localSdk.createPegout('0.001', rskAddresses[0])).rejects.toThrowError(AmountBelowMinError)
+
+    expect(feePerKb).not.toHaveBeenCalled()
+    expect(redeemScript).not.toHaveBeenCalled()
+    expect(threshold).not.toHaveBeenCalled()
+    expect(federationAddress).not.toHaveBeenCalled()
+  })
+
   it('should fail to create a peg-out if user has not enough funds', async () => {
     mockProvider.getBalance.mockResolvedValueOnce(mockValues.lowBalance)
 

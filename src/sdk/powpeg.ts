@@ -567,13 +567,17 @@ export class PowPegSDK {
     return requiredFunds > networkMinimum ? requiredFunds : networkMinimum
   }
 
-  private async validateMinimumPegoutAmount(amount: string): Promise<void> {
-    const amountSatoshis = ethers.utils.parseUnits(amount, 18).toBigInt() / this.weiPerSatoshi
-    const minimumSatoshis = await this.getMinimumPegoutSatoshis()
+  private assertAtLeastMinimumPegout(amountSatoshis: bigint, minimumSatoshis: bigint): void {
     if (amountSatoshis < minimumSatoshis) {
       const minimumAmount = ethers.utils.formatUnits(minimumSatoshis * this.weiPerSatoshi, 18)
       throw new sdkErrors.AmountBelowMinError(`Minimum allowed amount is ${minimumAmount}.`)
     }
+  }
+
+  private async validateMinimumPegoutAmount(amount: string): Promise<void> {
+    const amountSatoshis = ethers.utils.parseUnits(amount, 18).toBigInt() / this.weiPerSatoshi
+    this.assertAtLeastMinimumPegout(amountSatoshis, this.minPegoutSatoshis[this.network])
+    this.assertAtLeastMinimumPegout(amountSatoshis, await this.getMinimumPegoutSatoshis())
   }
 
   private createPegoutTransaction(amount: string, fromAddress: string) {
