@@ -2,7 +2,7 @@ import { bridge } from '@rsksmart/rsk-precompiled-abis'
 import { ethers } from '@rsksmart/bridges-core-sdk'
 
 export class Bridge {
-  readonly address = '0x0000000000000000000000000000000001000006'
+  readonly address = bridge.address
   bridgeContract: ethers.Contract
 
   constructor(provider: ethers.providers.Provider) {

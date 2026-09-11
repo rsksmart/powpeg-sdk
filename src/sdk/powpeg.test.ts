@@ -171,13 +171,8 @@ describe('sdk', () => {
   })
   it('should refuse a peg-out from a contract account before anything is sent', async () => {
     mockProvider.getCode.mockResolvedValueOnce('0x60806040523480156100')
-    const signer = {
-      getChainId: vi.fn().mockResolvedValue(31),
-      sendTransaction: vi.fn(),
-    } as unknown as ethers.Signer
 
     await expect(sdk.createPegout('0.005', rskAddresses[0])).rejects.toThrowError(UnsupportedSenderError)
-    expect(signer.sendTransaction).not.toHaveBeenCalled()
   })
 
   it('should read both the sender\'s balance and its code', async () => {
@@ -185,6 +180,38 @@ describe('sdk', () => {
 
     expect(mockProvider.getBalance).toHaveBeenCalledWith(rskAddresses[0])
     expect(mockProvider.getCode).toHaveBeenCalledWith(rskAddresses[0])
+  })
+
+  it('should build a peg-in for a signer that exposes no change addresses', async () => {
+    const noChangeSigner = {
+      getNonChangeAddresses: vi.fn().mockResolvedValue(btcAddresses.slice(1)),
+      getChangeAddresses: vi.fn().mockResolvedValue([]),
+      signTransaction: vi.fn(),
+    } satisfies BitcoinSigner
+    const noChangeFundingTx = buildFundingTx(2_000_000, 0, 41)
+    mockedDataSource.getTxHex.mockResolvedValue(noChangeFundingTx.hex)
+    const utxo = { address: btcAddresses[1], txid: noChangeFundingTx.txid, vout: 0, amount: 2_000_000n }
+
+    const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [utxo], noChangeSigner)
+    const funded = await sdk.fundPegin(psbt, 'average')
+
+    expect(funded.psbt.txOutputs.at(-1)?.address).toBe(utxo.address)
+  })
+
+  it('should build a peg-in from selected UTXOs even when the signer derives no addresses', async () => {
+    const addressLessSigner = {
+      getNonChangeAddresses: vi.fn().mockResolvedValue([]),
+      getChangeAddresses: vi.fn().mockResolvedValue([]),
+      signTransaction: vi.fn(),
+    } satisfies BitcoinSigner
+    const ownFundingTx = buildFundingTx(2_000_000, 0, 51)
+    mockedDataSource.getTxHex.mockResolvedValue(ownFundingTx.hex)
+    const utxo = { address: btcAddresses[1], txid: ownFundingTx.txid, vout: 0, amount: 2_000_000n }
+
+    const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [utxo], addressLessSigner)
+    const funded = await sdk.fundPegin(psbt, 'average')
+
+    expect(funded.psbt.txOutputs.at(-1)?.address).toBe(utxo.address)
   })
 
   it('should refuse to build a peg-in when the signer derives no addresses', async () => {
@@ -273,6 +300,8 @@ describe('sdk', () => {
       const afterRskip378 = sdk['pegoutVSizeAfterRskip378'](erpRedeemScript, 7, p2shOutput, 2, 2)
 
       expect(afterRskip378).toBe(786)
+      // A second input count pins the per-input witness terms, which the /4 truncation hides at 2 inputs.
+      expect(sdk['pegoutVSizeAfterRskip378'](erpRedeemScript, 7, p2shOutput, 9, 2)).toBe(3280)
       expect(afterRskip378).toBeGreaterThan(sdk['pegoutVSizeSegwit'](erpRedeemScript, 7, p2shOutput, 2, 2))
     })
 
@@ -288,6 +317,22 @@ describe('sdk', () => {
 
       expect(sdk['resolveFederationOutput'](mockRedeemScript, mockValues.federationAddress).isSegwit).toBe(true)
       expect(sdk['resolveFederationOutput'](mockRedeemScript, legacyAddress).isSegwit).toBe(false)
+    })
+
+    it('should size a P2SH-P2WSH federation whose redeem script exceeds the script-sig limit', () => {
+      // A P2SH-P2WSH redeem script may run to 3566 bytes; only a script-sig spend is capped at 520.
+      const largeRedeemScript = Buffer.concat([
+        ...Array.from({ length: 15 }, (_, i) => Buffer.concat([Buffer.from([0x21]), Buffer.alloc(33, i + 1)])),
+        Buffer.alloc(15, 0xae),
+      ])
+      const federationAddress = payments.p2sh({
+        redeem: payments.p2wsh({ redeem: { output: largeRedeemScript }, network: bitcoinJsNetworks.testnet }),
+        network: bitcoinJsNetworks.testnet,
+      }).address as string
+
+      expect(largeRedeemScript.length).toBeGreaterThan(520)
+      expect(sdk['resolveFederationOutput'](largeRedeemScript, federationAddress).isSegwit).toBe(true)
+      expect(sdk['simulatePegoutVSize'](`0x${largeRedeemScript.toString('hex')}`, 8, federationAddress)).toBeGreaterThan(0)
     })
 
     it('should reject a federation address that does not derive from the redeem script', () => {
@@ -349,6 +394,17 @@ describe('sdk', () => {
     expect(error.message).toContain('0xsent')
   })
 
+  it('should ignore a rejection event emitted by a contract other than the Bridge', async () => {
+    const bridgeInterface = new ethers.utils.Interface(bridgePrecompile.abi)
+    const { data, topics } = bridgeInterface.encodeEventLog(
+      bridgeInterface.getEvent('release_request_rejected'),
+      [ethers.constants.AddressZero, 500_000_000_000_000n, 1],
+    )
+    const impostor = { address: '0x00000000000000000000000000000000000c0ffee', data, topics }
+
+    expect(sdk['bridge'].findRejectedPegout([impostor])).toBeUndefined()
+  })
+
   it('should not claim a refund when the Bridge rejected the caller for being a contract', async () => {
     const { tx } = await sdk.createPegout('0.005', rskAddresses[0])
     const error = await sdk.signAndBroadcastPegout(tx, rejectedPegoutSigner(2)).catch((e) => e)
@@ -393,7 +449,8 @@ describe('sdk', () => {
     const { tx } = await sdk.createPegout('0.005', rskAddresses[0])
     const receipt = await sdk.signAndBroadcastPegout(tx, signer)
 
-    expect(signer.sendTransaction).toHaveBeenCalledWith(tx)
+    expect(signer.sendTransaction).toHaveBeenCalledWith({ from: tx.from, to: tx.to, value: tx.value })
+    expect(tx.chainId).toBe(31)
     expect(waitForTransaction).toHaveBeenCalledWith('0xsent')
     expect(receipt).toEqual({ transactionHash: '0xreceipt', logs: [] })
   })

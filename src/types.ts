@@ -43,6 +43,7 @@ export interface BitcoinSigner {
  * {@link PowPegSDK} falls back to its built-in 2WP API-backed implementation when none is supplied.
  */
 export interface BitcoinDataSource {
+  /** Fee rate in sat/B. Must be a positive integer: a fractional rate is rejected as implausible. */
   getFeeRate(level: FeeLevel): Promise<number>
   getTxHex(txId: string): Promise<string>
   getOutputs(address: string): Promise<Utxo[]>

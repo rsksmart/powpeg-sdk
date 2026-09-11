@@ -78,6 +78,7 @@ export class ApiService implements BitcoinDataSource {
   private api: AxiosInstance
   private apiOrigin?: string
   private maxResponseBytes = 10 * 1024 * 1024
+  private minBroadcastTimeoutMs = 60_000
 
   constructor(network: Network, apiUrl?: string, private readonly maxFeeRateSatPerByte = 1000, private readonly requestTimeoutMs = 10_000) {
     const baseURL = apiUrl ?? this.apiUrls[network]
@@ -88,13 +89,17 @@ export class ApiService implements BitcoinDataSource {
       maxContentLength: this.maxResponseBytes,
       maxBodyLength: this.maxResponseBytes,
       maxRedirects: 0,
+      adapter: ['xhr', 'http', 'fetch'],
+      fetchOptions: { redirect: 'error' },
     })
     this.api.interceptors.response.use((response) => this.assertSameOrigin(response))
   }
 
   /**
    * Rejects a response served by a host other than the configured one. `maxRedirects` is only honoured
-   * by the Node adapter, so the final URL is compared here, where both adapters expose it.
+   * by the Node adapter, so this covers the browser one, which follows redirects on its own and reports
+   * the final URL. Requests the Node adapter serves never reach here with a foreign origin, since a 3xx
+   * is surfaced as an error before any redirect is followed.
    */
   private assertSameOrigin(response: AxiosResponse): AxiosResponse {
     const responseOrigin = originOf(finalUrlOf(response))
@@ -118,6 +123,9 @@ export class ApiService implements BitcoinDataSource {
       }
       if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
         throw new APIError(`The API did not respond in time: ${error.message}`)
+      }
+      if (error.code === 'ERR_BAD_RESPONSE') {
+        throw new APIError(`The API response was rejected: ${error.message}`)
       }
       if (error.request) {
         throw new APIError('No response from server')
@@ -176,7 +184,8 @@ export class ApiService implements BitcoinDataSource {
   }
 
   async broadcast(hexTx: string): Promise<string> {
-    const response = await this.api.post('/broadcast', { data: hexTx }).catch(this.handleError)
+    const timeout = Math.max(this.requestTimeoutMs, this.minBroadcastTimeoutMs)
+    const response = await this.api.post('/broadcast', { data: hexTx }, { timeout }).catch(this.handleError)
     return response.data.txId
   }
 

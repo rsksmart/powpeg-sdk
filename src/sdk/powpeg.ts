@@ -1,5 +1,6 @@
 import { address, payments, Psbt, Transaction } from 'bitcoinjs-lib'
-import type { BitcoinDataSource, BitcoinSigner, Utxo, FeeLevel, AddressWithDetails, PegoutFeeEstimation, Feature, TxType, UnsignedPegin, PowPegSDKOptions } from '../types'
+import type { BitcoinDataSource, BitcoinSigner, Utxo, FeeLevel, AddressWithDetails, PegoutFeeEstimation, Feature, TxType, UnsignedPegin, PowPegSDKOptions, RejectedPegoutReason } from '../types'
+import { RejectedPegoutReasons } from '../types'
 import { networks, type Network } from '../constants'
 import { getAddressType, remove0x } from '../utils'
 import { Bridge } from '../bridge'
@@ -30,13 +31,14 @@ export class PowPegSDK {
   private pegoutSimulationInputs = 2
   private pegoutSimulationOutputs = 2
   private pegoutScriptSigSize = 36
+  private maxScriptSigRedeemScriptSize = 520
   private pegoutSignatureSize = 73
   private pegoutDeployedSignatureSize = 72
   private weiPerSatoshi = 10_000_000_000n
-  private pegoutRejectionReasons: Record<number, string> = {
-    1: 'the amount was below the minimum the Bridge enforces, and was refunded',
-    2: 'peg-outs are only allowed from an externally owned account and the caller is a contract; the amount was NOT refunded and remains held by the Bridge',
-    3: 'the fee would have exceeded the amount being released, and the amount was refunded',
+  private pegoutRejectionReasons: Record<RejectedPegoutReason, string> = {
+    LOW_AMOUNT: 'the amount was below the minimum the Bridge enforces, and was refunded',
+    CALLER_CONTRACT: 'peg-outs are only allowed from an externally owned account and the caller is a contract; the amount was NOT refunded and remains held by the Bridge',
+    FEE_ABOVE_VALUE: 'the fee would have exceeded the amount being released, and the amount was refunded',
   }
   private btcNetworkConfig: typeof networks[Network]
   private bridge: Bridge
@@ -59,6 +61,8 @@ export class PowPegSDK {
    * falls back to the default documented on {@link PowPegSDKOptions}.
    */
   constructor(options: PowPegSDKOptions) {
+    assertTruthy(options, 'PowPegSDK takes a single options object; see PowPegSDKOptions.')
+    assertTruthy(networks[options.network], `Unknown network ${String(options.network)}; use Network.MAIN or Network.TEST.`)
     const {
       network,
       bitcoinSigner = null,
@@ -155,9 +159,6 @@ export class PowPegSDK {
   private async getAddressesGroupedByUsage(signer: BitcoinSigner) {
     const nonChangeAddresses = await signer.getNonChangeAddresses(this.maxBundleSize)
     const changeAddresses = await signer.getChangeAddresses(this.maxBundleSize)
-    if (!nonChangeAddresses.length || !changeAddresses.length) {
-      throw new sdkErrors.SigningError('The signer derived no addresses; a peg-in needs a refund and a change address.')
-    }
     const [nonChangeDetails, changeDetails] = await Promise.all([
       this.getAddressesWithDetails(nonChangeAddresses),
       this.getAddressesWithDetails(changeAddresses),
@@ -262,6 +263,9 @@ export class PowPegSDK {
     }
     else {
       const usedAddresses = addresses.nonChange.used.concat(addresses.change.used)
+      if (!usedAddresses.length && !addresses.nonChange.unused.length && !addresses.change.unused.length) {
+        throw new sdkErrors.SigningError('The signer derived no addresses, so there is nothing to discover UTXOs from. Pass selectedUtxos to fund from a set you resolved yourself.')
+      }
       const { withBalance } = this.groupAddressesByBalance(usedAddresses)
       utxos = await this.getUtxos(withBalance)
     }
@@ -485,24 +489,35 @@ export class PowPegSDK {
    */
   private resolveFederationOutput(redeemScript: Buffer, federationAddress: string): { outputScript: Buffer, isSegwit: boolean } {
     const network = this.btcNetworkConfig.lib
-    const candidates: { outputScript: Buffer, isSegwit: boolean }[] = []
-    try {
-      const segwit = payments.p2sh({ redeem: payments.p2wsh({ redeem: { output: redeemScript }, network }), network })
-      if (segwit.output && federationAddress === segwit.address) {
-        candidates.push({ outputScript: segwit.output, isSegwit: true })
+    const derivations: (() => { outputScript: Buffer, isSegwit: boolean } | undefined)[] = [
+      () => {
+        const segwit = payments.p2sh({ redeem: payments.p2wsh({ redeem: { output: redeemScript }, network }), network })
+        return segwit.output && federationAddress === segwit.address ? { outputScript: segwit.output, isSegwit: true } : undefined
+      },
+      () => {
+        if (redeemScript.length > this.maxScriptSigRedeemScriptSize) {
+          return undefined
+        }
+        const legacy = payments.p2sh({ redeem: { output: redeemScript }, network })
+        return legacy.output && federationAddress === legacy.address ? { outputScript: legacy.output, isSegwit: false } : undefined
+      },
+    ]
+    let lastError: unknown
+    for (const derive of derivations) {
+      try {
+        const candidate = derive()
+        if (candidate) {
+          return candidate
+        }
       }
-      const legacy = payments.p2sh({ redeem: { output: redeemScript }, network })
-      if (legacy.output && federationAddress === legacy.address) {
-        candidates.push({ outputScript: legacy.output, isSegwit: false })
+      catch (error) {
+        lastError = error
       }
     }
-    catch (error) {
-      throw new sdkErrors.FederationAddressError(`The active powpeg redeem script could not be interpreted: ${error instanceof Error ? error.message : String(error)}`)
+    if (lastError) {
+      throw new sdkErrors.FederationAddressError(`The active powpeg redeem script could not be interpreted: ${lastError instanceof Error ? lastError.message : String(lastError)}`)
     }
-    if (!candidates.length) {
-      throw new sdkErrors.FederationAddressError(`Federation address ${federationAddress} is not derivable from the active powpeg redeem script.`)
-    }
-    return candidates[0]
+    throw new sdkErrors.FederationAddressError(`Federation address ${federationAddress} is not derivable from the active powpeg redeem script.`)
   }
 
   private buildPegoutSimulation(outputScript: Buffer, inputs: number, outputs: number, scriptSig?: Buffer): Transaction {
@@ -671,12 +686,12 @@ export class PowPegSDK {
     if (signerChainId !== expectedChainId) {
       throw new sdkErrors.WrongNetworkError(`Signer is on chain ${signerChainId}, but the SDK is configured for ${this.network} (chain ${expectedChainId}).`)
     }
-    const { hash } = await signer.sendTransaction(tx)
+    const { hash } = await signer.sendTransaction({ from: tx.from, to: tx.to, value: tx.value })
     const receipt = await signer.provider?.waitForTransaction(hash)
     if (receipt) {
       const rejected = this.bridge.findRejectedPegout(receipt.logs ?? [])
       if (rejected) {
-        const reason = this.pegoutRejectionReasons[rejected.reason] ?? `the Bridge reported reason code ${rejected.reason}`
+        const reason = this.pegoutRejectionReasons[RejectedPegoutReasons[rejected.reason as keyof typeof RejectedPegoutReasons]] ?? `the Bridge reported reason code ${rejected.reason}`
         throw new sdkErrors.PegoutRejectedError(
           rejected.reason,
           hash,

@@ -150,6 +150,24 @@ describe('ApiService', () => {
     })
   })
 
+  it('should refuse redirects on every adapter it can run on', () => {
+    new ApiService('TEST')
+
+    expect(mockCreate).toHaveBeenLastCalledWith(expect.objectContaining({
+      adapter: ['xhr', 'http', 'fetch'],
+      maxRedirects: 0,
+      fetchOptions: { redirect: 'error' },
+    }))
+  })
+
+  it('should give broadcasting a longer bound than a read', async () => {
+    mockPost.mockResolvedValue({ data: { txId: '0xbroadcast' } })
+
+    await apiService.broadcast('00')
+
+    expect(mockPost).toHaveBeenCalledWith('/broadcast', { data: '00' }, { timeout: 60_000 })
+  })
+
   it('should name a timeout instead of reporting it as no response', async () => {
     mockIsAxiosError.mockReturnValue(true)
     mockGet.mockRejectedValue({ code: 'ECONNABORTED', message: 'timeout of 10000ms exceeded', request: {} })
@@ -162,6 +180,14 @@ describe('ApiService', () => {
     new ApiService('TEST', undefined, 1000, 2_500)
 
     expect(mockCreate).toHaveBeenLastCalledWith(expect.objectContaining({ timeout: 2_500 }))
+  })
+
+  it('should name a response the client refused instead of reporting it as no response', async () => {
+    mockIsAxiosError.mockReturnValue(true)
+    mockGet.mockRejectedValue({ code: 'ERR_BAD_RESPONSE', message: 'maxContentLength size of 10485760 exceeded', request: {} })
+
+    await expect(apiService.getFeeRate('fast')).rejects.toThrow('maxContentLength size of 10485760 exceeded')
+    await expect(apiService.getFeeRate('fast')).rejects.not.toThrow('No response from server')
   })
 
   it('should throw API Error for network errors', async () => {

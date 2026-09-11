@@ -8,7 +8,7 @@ Public exports of the package's entry point (`src/index.ts`). Each description i
 |---|---|---|
 | [`PowPegSDK`](../src/sdk/powpeg.ts) | class | SDK for creating, funding, signing and broadcasting native PowPeg peg-in (BTC -> RBTC) and peg-out (RBTC -> BTC) transactions. |
 
-See [`PowPegSDK`](../src/sdk/powpeg.ts) for the full list of methods (`estimatePeginFee`, `createPegin`, `fundPegin`, `createAndFundPegin`, `createAndFundPsbt`, `signAndBroadcastPegin`, `estimatePegoutFees`, `createPegout`, `signAndBroadcastPegout`, `getTransactionStatus`, `getAvailableUtxos`) — each documented in place with its params and return type.
+See [`PowPegSDK`](../src/sdk/powpeg.ts) for the full list of methods (`estimatePeginFee`, `createPegin`, `fundPegin`, `createAndFundPegin`, `createAndFundPsbt`, `signAndBroadcastPegin`, `estimatePegoutFees`, `createPegout`, `signAndBroadcastPegout`, `getTransactionStatus`, `getFeatures`, `getAvailableUtxos`) — each documented in place with its params and return type.
 
 ## Bitcoin signers
 
@@ -18,11 +18,15 @@ The package ships no `BitcoinSigner` implementations — see [`bitcoin-signers.m
 
 | Export | Kind | Description |
 |---|---|---|
+| `Network` | type + value | `'MAIN'` or `'TEST'`. Exported as both, so `Network.TEST` can be used where a network is expected and `Network` can annotate configuration. |
+| `PowPegSDKOptions` | interface | Configuration for `PowPegSDK`; only `network` is required. |
 | `FeeLevel` | type | Priority level used to look up a Bitcoin network fee rate. |
 | `BitcoinSigner` | interface | Contract that a Bitcoin signing backend must implement so `PowPegSDK` can derive addresses and sign peg-in transactions with it. |
 | `BitcoinDataSource` | interface | Contract for a Bitcoin data provider (fee rates, UTXOs, raw transactions, broadcasting). |
 | `AddressWithDetails` | interface | A Bitcoin address together with its current balance and transaction count. |
 | `Utxo` | interface | A spendable Bitcoin unspent transaction output. |
+| `Feature` | interface | A feature flag as reported by the 2WP API. |
+| `SupportedBrowsers` | interface | Browser support flags carried by a `Feature`. |
 | `PegoutFeeEstimation` | interface | Estimated Bitcoin and Rootstock fees for a peg-out. |
 | `TxType` | enum | Distinguishes a peg-in (BTC -> RBTC) from a peg-out (RBTC -> BTC) transaction. |
 | `PegoutStatuses` | enum | Lifecycle status of a peg-out transaction, as reported by the 2WP API. |
@@ -43,7 +47,7 @@ The package ships no `BitcoinSigner` implementations — see [`bitcoin-signers.m
 | `AmountBelowMinError` | class | Thrown when a requested peg-in or peg-out amount is below the protocol's minimum allowed amount. |
 | `NotEnoughFundsError` | class | Thrown when the available UTXOs/balance can't cover the requested amount plus fees. |
 | `APIError` | class | Thrown when the 2WP API responds with an error, a failed request, or an unexpected failure. |
-| `InvalidAddressError` | class | Thrown when one or more Bitcoin addresses don't belong to the SDK's configured network. |
+| `InvalidAddressError` | class | Thrown when one or more addresses are invalid: a Bitcoin address that doesn't belong to the SDK's configured network, or a malformed Rootstock recipient address. |
 | `FederationAddressError` | class | Thrown when the federation address can't be retrieved from the pegin configuration endpoint or doesn't match the Bridge contract's value. |
 | `SigningError` | class | Thrown when the configured `BitcoinSigner` doesn't return what the SDK asked it for: no derived addresses, or no signed transaction to broadcast. |
 | `PegoutRejectedError` | class | Thrown when the peg-out transaction was mined but the Bridge rejected the release request; carries `reason` (1 below minimum, 2 caller is a contract, 3 fee above value — 1 and 3 are refunded, 2 is not), `txHash` and `amount`. |

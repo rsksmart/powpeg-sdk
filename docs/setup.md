@@ -80,6 +80,36 @@ The bare strings `'MAIN'` and `'TEST'` are still accepted, so either style works
 | `maxFeeToAmountRatio` | Upper bound for the ratio of total fee to peg-in amount; a higher ratio throws `InvalidFeeRateError` | `0.5` |
 | `requestTimeoutMs` | Milliseconds before a request to the API is aborted | `10000` |
 
+## Limits and behaviour worth knowing
+
+- **Transport limits are adapter-dependent.** The request timeout applies everywhere. The response-size
+  cap (10 MB) is enforced by axios's Node adapter only — a browser consumer does not get it. Redirects
+  are refused on every adapter: `maxRedirects: 0` covers Node, `fetchOptions.redirect: 'error'` covers
+  the fetch adapter, and a response served by a host other than the configured one is rejected by an
+  interceptor, which is what covers the browser adapter.
+- **Broadcasting gets a longer bound than a read** (60 seconds, or the configured timeout if larger),
+  because aborting it cannot un-relay a transaction that may already be in the mempool.
+- **The peg-out minimum is derived from the Bridge**, from its fee per kb and the active federation, and
+  is taken as the larger of the size rule in force today and the one that activates with RSKIP378. That
+  is never below the minimum the Bridge enforces; above a `feePerKb` of roughly 345,000 on mainnet it can
+  be up to ~16% above it, which would reject amounts the Bridge would still accept. Today's `feePerKb`
+  is 8,000 on both networks, where the two agree exactly.
+- **Peg-outs are refused from contract accounts** before anything is sent, because the Bridge rejects a
+  release requested from a contract *without refunding it*.
+- **The provider is pinned to the configured network's chain id**, so a node reporting a different chain
+  fails on its first call — including a local regtest or fork node.
+
+## Migrating from 1.x
+
+- `TrezorSigner` and `LedgerSigner` are no longer exported; supply your own `BitcoinSigner` (see
+  [`bitcoin-signers.md`](./bitcoin-signers.md)).
+- The constructor takes a single options object instead of nine positional parameters:
+  `new PowPegSDK(signer, dataSource, 'TEST', undefined, apiUrl)` becomes
+  `new PowPegSDK({ network: Network.TEST, bitcoinSigner: signer, bitcoinDataSource: dataSource, apiUrl })`.
+- Four error types are new — `SigningError`, `WrongNetworkError`, `PegoutRejectedError` and
+  `UnsupportedSenderError` — and `APIError.message` now carries the API's own message rather than a
+  constant. Code that classifies SDK failures by message text should be re-checked.
+
 ## External dependencies
 
 - **Rootstock RPC node** — read via `ethers.providers.JsonRpcProvider`, used for the bridge precompile (`Bridge` in `src/bridge.ts`) and to send peg-out transactions. Peg-out estimation additionally reads `getFeePerKb()`, `getActivePowpegRedeemScript()`, `getFederationThreshold()` and `getFederationAddress()` from the Bridge, to derive the minimum amount the Bridge currently enforces rather than assume a fixed one, so a node that cannot serve those calls will fail `estimatePegoutFees` and `createPegout`. The provider is pinned to the configured network's chain id, so a node reporting a different chain fails on the first call.
