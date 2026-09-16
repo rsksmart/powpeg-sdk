@@ -62,7 +62,7 @@ export class PowPegSDK {
    */
   constructor(options: PowPegSDKOptions) {
     assertTruthy(options, 'PowPegSDK takes a single options object; see PowPegSDKOptions.')
-    assertTruthy(networks[options.network], `Unknown network ${String(options.network)}; use Network.MAIN or Network.TEST.`)
+    assertTruthy(Object.prototype.hasOwnProperty.call(networks, options.network), `Unknown network ${String(options.network)}; use Network.MAIN or Network.TEST.`)
     const {
       network,
       bitcoinSigner = null,
@@ -401,7 +401,7 @@ export class PowPegSDK {
    * @param {BitcoinSigner} signer - Bitcoin signer used to derive the addresses funding this peg-in.
    * @param {FeeLevel} feeLevel - Fee priority level used to look up the current network fee rate. Defaults to `'fast'`.
    * @param {Utxo[]} [selectedUtxos] - UTXOs to fund the transaction with. If omitted, they're derived from the signer's used addresses.
-   * @param {number} [feeRate] - Fee rate, in sat/B, to fund with. When omitted, a fresh rate is fetched from the configured `BitcoinDataSource` and validated. Pass a rate obtained independently (e.g. from a prior `estimatePeginFee` call) to pin funding to that exact value instead of risking a second, possibly different, fetch.
+   * @param {number} [feeRate] - Fee rate, in sat/B, to fund with. When omitted, a fresh rate is fetched from the configured `BitcoinDataSource` and validated. Pass a rate obtained independently to pin funding to that exact value instead of risking a second, possibly different, fetch.
    * @returns {Promise<UnsignedPegin>} The funded, unsigned peg-in PSBT along with its inputs, raw transactions, and total fee.
    */
   async createAndFundPegin(amount: bigint, recipientAddress: string, signer: BitcoinSigner, feeLevel: FeeLevel = 'fast', selectedUtxos?: Utxo[], feeRate?: number): Promise<UnsignedPegin> {
@@ -678,6 +678,7 @@ export class PowPegSDK {
    * @param {ethers.Signer} signer - Ethers signer used to send the transaction.
    * @returns The mined transaction receipt, if the signer's provider is set.
    * @throws {WrongNetworkError} If the transaction's chain id, or the signer's chain, doesn't match the network the SDK was configured for.
+   * @throws {TransactionRevertedError} If the transaction was mined but reverted.
    * @throws {PegoutRejectedError} If the transaction was mined but the Bridge rejected and refunded the release request.
    */
   async signAndBroadcastPegout(tx: UnsignedPegout, signer: ethers.Signer) {
@@ -693,6 +694,9 @@ export class PowPegSDK {
     const { hash } = await signer.sendTransaction(request)
     const receipt = await signer.provider?.waitForTransaction(hash)
     if (receipt) {
+      if (receipt.status === 0) {
+        throw new sdkErrors.TransactionRevertedError(hash, receipt, `The peg-out transaction ${hash} was mined but reverted; no BTC release was requested.`)
+      }
       const rejected = this.bridge.findRejectedPegout(receipt.logs ?? [])
       if (rejected) {
         const reason = this.pegoutRejectionReasons[RejectedPegoutReasons[rejected.reason as keyof typeof RejectedPegoutReasons]] ?? `the Bridge reported reason code ${rejected.reason}`

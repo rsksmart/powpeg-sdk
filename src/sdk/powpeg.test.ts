@@ -3,7 +3,7 @@ import { networks as bitcoinJsNetworks, payments, Psbt, Transaction } from 'bitc
 import { PowPegSDK } from './powpeg'
 import { ApiService } from '../api/api'
 import type { BitcoinSigner, BitcoinDataSource } from '../types'
-import { AmountBelowMinError, NotEnoughFundsError, InvalidAddressError, FederationAddressError, InvalidFeeRateError, SigningError, WrongNetworkError, PegoutRejectedError, UnsupportedSenderError } from '../errors'
+import { AmountBelowMinError, NotEnoughFundsError, InvalidAddressError, FederationAddressError, InvalidFeeRateError, SigningError, WrongNetworkError, PegoutRejectedError, UnsupportedSenderError, TransactionRevertedError } from '../errors'
 import { bridge as bridgePrecompile } from '@rsksmart/rsk-precompiled-abis'
 import { ethers } from '@rsksmart/bridges-core-sdk'
 import { TxType, PegoutStatuses, PeginStatuses } from '../types'
@@ -414,6 +414,11 @@ describe('sdk', () => {
     expect(error.message).toContain('remains held by the Bridge')
   })
 
+  it.each(['toString', '__proto__', 'constructor', 'hasOwnProperty'])('should refuse %s as a network name', (network) => {
+    expect(() => new PowPegSDK({ network: network as unknown as 'TEST', bitcoinSigner: mockedSigner }))
+      .toThrowError('Unknown network')
+  })
+
   it('should pin the configured network on the Rootstock provider', () => {
     new PowPegSDK({ network: 'MAIN' })
 
@@ -469,6 +474,33 @@ describe('sdk', () => {
     await sdk.signAndBroadcastPegout(request, signer)
 
     expect(signer.sendTransaction).toHaveBeenCalledWith(request)
+  })
+
+  it('should surface a peg-out that mined but reverted instead of returning its receipt', async () => {
+    const signer = {
+      getChainId: vi.fn().mockResolvedValue(31),
+      sendTransaction: vi.fn().mockResolvedValue({ hash: '0xsent' }),
+      provider: { waitForTransaction: vi.fn().mockResolvedValue({ transactionHash: '0xmined', status: 0, gasUsed: 21_000, logs: [] }) },
+    } as unknown as ethers.Signer
+
+    const { tx } = await sdk.createPegout('0.005', rskAddresses[0])
+    const error = await sdk.signAndBroadcastPegout(tx, signer).catch((e) => e)
+
+    expect(error).toBeInstanceOf(TransactionRevertedError)
+    expect(error.txHash).toBe('0xsent')
+    expect(error.receipt).toEqual({ transactionHash: '0xmined', status: 0, gasUsed: 21_000, logs: [] })
+  })
+
+  it('should return the receipt of a peg-out that mined without a status field', async () => {
+    const signer = {
+      getChainId: vi.fn().mockResolvedValue(31),
+      sendTransaction: vi.fn().mockResolvedValue({ hash: '0xsent' }),
+      provider: { waitForTransaction: vi.fn().mockResolvedValue({ transactionHash: '0xsent', logs: [] }) },
+    } as unknown as ethers.Signer
+
+    const { tx } = await sdk.createPegout('0.005', rskAddresses[0])
+
+    await expect(sdk.signAndBroadcastPegout(tx, signer)).resolves.toEqual({ transactionHash: '0xsent', logs: [] })
   })
 
   it('should not send a peg-out whose chain id is not the configured one', async () => {

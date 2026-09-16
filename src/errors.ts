@@ -1,3 +1,5 @@
+import type { ethers } from '@rsksmart/bridges-core-sdk'
+
 /** Thrown when a requested peg-in or peg-out amount is below the protocol's minimum allowed amount. */
 export class AmountBelowMinError extends Error {
   constructor(message?: string) {
@@ -101,5 +103,23 @@ export class UnsupportedSenderError extends Error {
   constructor(message?: string) {
     super(message)
     this.name = 'UnsupportedSenderError'
+  }
+}
+
+/**
+ * Thrown when the peg-out transaction was mined but reverted, so the Bridge never recorded a release
+ * request and no BTC will be released. This is distinct from {@link PegoutRejectedError}, which the
+ * Bridge raises from a transaction that succeeded. `txHash` and `receipt` are kept on the error because
+ * the caller has already paid the gas and needs both to account for it without a second round trip.
+ */
+export class TransactionRevertedError extends Error {
+  readonly txHash: string
+  readonly receipt: ethers.providers.TransactionReceipt
+
+  constructor(txHash: string, receipt: ethers.providers.TransactionReceipt, message?: string) {
+    super(message)
+    this.name = 'TransactionRevertedError'
+    this.txHash = txHash
+    this.receipt = receipt
   }
 }

@@ -126,8 +126,9 @@ The bare strings `'MAIN'` and `'TEST'` are still accepted, so either style works
   is rejected there (`invalid transaction key` when the signer signs the transaction itself, `invalid
   object key` through `JsonRpcSigner`). TypeScript catches such a field only when the request is written
   as a literal at the call site, not when it is built in a variable first.
-- Four error types are new — `SigningError`, `WrongNetworkError`, `PegoutRejectedError` and
-  `UnsupportedSenderError` — and `APIError.message` now derives from the API's own message rather than a
+- Five error types are new — `SigningError`, `WrongNetworkError`, `PegoutRejectedError`,
+  `UnsupportedSenderError` and `TransactionRevertedError` — and `APIError.message` now derives from the
+  API's own message rather than a
   constant: control characters are replaced with spaces and the text is capped at 300 characters, so a
   message that survives is the API's own wording but not necessarily byte-for-byte. Code that classifies
   SDK failures by message text should be re-checked.
