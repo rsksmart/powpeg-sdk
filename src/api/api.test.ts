@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { ApiService } from './api'
 import { APIError } from '../errors'
+import { TxType } from '../types'
 
 const { mockGet, mockPost, mockIsAxiosError, mockCreate, mockUse, mockRequestUse } = vi.hoisted(() => ({
   mockGet: vi.fn(),
@@ -206,6 +207,29 @@ describe('ApiService', () => {
       const config = requestInterceptor()({ timeout: 10_000, signal: existing })
 
       expect(config.signal).toBe(existing)
+    })
+  })
+
+  describe('caller input reaching the URL', () => {
+    it('should encode a transaction hash instead of letting it traverse the path', async () => {
+      mockGet.mockResolvedValue({ data: {} })
+
+      await apiService.getTransactionStatus('../../../etc/passwd', TxType.PEGIN)
+
+      expect(mockGet).toHaveBeenCalledWith('/tx-status-by-type/..%2F..%2F..%2Fetc%2Fpasswd/PEGIN')
+    })
+
+    it('should encode a txid before putting it in the query string', async () => {
+      mockGet.mockResolvedValue({ data: { hex: '00' } })
+
+      await apiService.getTxHex('aaaa&other=1')
+
+      expect(mockGet).toHaveBeenCalledWith('/tx?tx=aaaa%26other%3D1')
+    })
+
+    it.each(['toString', '__proto__', 'constructor', 'hourly'])('should refuse %s as a fee level', async (level) => {
+      await expect(apiService.getFeeRate(level as 'fast')).rejects.toThrowError('Unknown fee level')
+      expect(mockGet).not.toHaveBeenCalled()
     })
   })
 

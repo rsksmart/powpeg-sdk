@@ -25,6 +25,7 @@ describe('isP2shScript', () => {
     ['is 23 bytes but carries no opcodes', '00'.repeat(23)],
     ['has the P2SH prefix but not the OP_EQUAL terminator', `a914${'11'.repeat(20)}00`],
     ['has the P2SH shape but the wrong push length', `a913${'11'.repeat(20)}87`],
+    ['matches the P2SH bytes but runs past the template', `a914${'11'.repeat(20)}87deadbeef`],
   ])('should not match a non-standard script that %s', (_label, hex) => {
     expect(isP2shScript(Buffer.from(hex, 'hex'))).toBe(false)
   })

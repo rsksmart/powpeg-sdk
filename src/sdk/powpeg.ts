@@ -2,7 +2,7 @@ import { address, payments, Psbt, Transaction } from 'bitcoinjs-lib'
 import type { BitcoinDataSource, BitcoinSigner, Utxo, FeeLevel, AddressWithDetails, PegoutFeeEstimation, Feature, TxType, UnsignedPegin, UnsignedPegout, PowPegSDKOptions, RejectedPegoutReason } from '../types'
 import { RejectedPegoutReasons } from '../types'
 import { networks, type Network } from '../constants'
-import { getAddressType, isP2shScript, isWitnessProgramScript, remove0x } from '../utils'
+import { getAddressType, isP2shScript, isSupportedFundingScript, isWitnessProgramScript, remove0x } from '../utils'
 import { Bridge } from '../bridge'
 import { ApiService } from '../api/api'
 import * as sdkErrors from '../errors'
@@ -19,7 +19,7 @@ export class PowPegSDK {
   private pegInOutputs = 3
   private powpegRsktHeader = '52534b5401'
   private burnDustMaxValue = 30_000
-  private funding = new WeakMap<Psbt, { utxos: Utxo[], changeAddress?: string }>()
+  private funding = new WeakMap<Psbt, { utxos: Utxo[], changeAddress?: string, skippedSatoshis: bigint }>()
   private psbtSigner = new WeakMap<Psbt, BitcoinSigner>()
   private minPeginAmount = 500_000n
   private peginFeeEstimationInputs = 2
@@ -75,6 +75,10 @@ export class PowPegSDK {
       maxFeeToAmountRatio = 0.5,
       requestTimeoutMs = 10_000,
     } = options
+    assertTruthy(Number.isInteger(maxBundleSize) && maxBundleSize > 0, `maxBundleSize must be a positive integer, got ${maxBundleSize}.`)
+    assertTruthy(Number.isInteger(burnDustValue) && burnDustValue >= 0, `burnDustValue must be a non-negative integer, got ${burnDustValue}.`)
+    assertTruthy(Number.isInteger(maxFeeRateSatPerByte) && maxFeeRateSatPerByte > 0, `maxFeeRateSatPerByte must be a positive integer, got ${maxFeeRateSatPerByte}.`)
+    assertTruthy(Number.isFinite(maxFeeToAmountRatio) && maxFeeToAmountRatio > 0 && maxFeeToAmountRatio <= 1, `maxFeeToAmountRatio must be greater than 0 and at most 1, got ${maxFeeToAmountRatio}.`)
     this.network = network
     this._bitcoinSigner = bitcoinSigner
     this._bitcoinDataSource = bitcoinDataSource
@@ -140,6 +144,15 @@ export class PowPegSDK {
       }
     })
     return { used, unused }
+  }
+
+  private isSpendableAddress(btcAddress: string) {
+    try {
+      return isSupportedFundingScript(address.toOutputScript(btcAddress, this.btcNetworkConfig.lib))
+    }
+    catch {
+      return false
+    }
   }
 
   private groupAddressesByBalance(addresses: AddressWithDetails[]) {
@@ -258,6 +271,7 @@ export class PowPegSDK {
       value: Number(amount),
     })
     let utxos: Utxo[]
+    let skippedSatoshis = 0n
     if (selectedUtxos) {
       utxos = [...selectedUtxos]
     }
@@ -267,9 +281,15 @@ export class PowPegSDK {
         throw new sdkErrors.SigningError('The signer derived no addresses, so there is nothing to discover UTXOs from. Pass selectedUtxos to fund from a set you resolved yourself.')
       }
       const { withBalance } = this.groupAddressesByBalance(usedAddresses)
-      utxos = await this.getUtxos(withBalance)
+      const spendable = withBalance.filter((address) => this.isSpendableAddress(address.address))
+      skippedSatoshis = withBalance
+        .filter((address) => !this.isSpendableAddress(address.address))
+        .reduce((total, address) => total + BigInt(address.balance), 0n)
+      utxos = await this.getUtxos(spendable)
     }
-    this.funding.set(psbt, { utxos, changeAddress: addresses.change.unused[0]?.address })
+    const changeAddress = addresses.change.unused.find((address) => this.isSpendableAddress(address.address))
+      ?? addresses.change.unused[0]
+    this.funding.set(psbt, { utxos, changeAddress: changeAddress?.address, skippedSatoshis })
     this.psbtSigner.set(psbt, signer)
 
     return psbt
@@ -318,11 +338,14 @@ export class PowPegSDK {
     return { baseFee, feePerInput }
   }
 
-  private async calculateFeeAndSelectedInputs(amount: bigint, utxos: Utxo[], feeRate: number) {
+  private async calculateFeeAndSelectedInputs(amount: bigint, utxos: Utxo[], feeRate: number, skippedSatoshis = 0n) {
     const { baseFee, feePerInput } = await this.calculatePeginFee(amount, feeRate)
     const { inputs, rest } = this.selectInputs(amount, utxos, baseFee, feePerInput)
     if (rest > 0) {
-      throw new sdkErrors.NotEnoughFundsError(`${rest} satoshis needed to cover the requested amount.`)
+      const skipped = skippedSatoshis > 0n
+        ? ` A further ${skippedSatoshis} satoshis are held by addresses whose script type the SDK cannot build a signable input for; pass selectedUtxos to fund from a set you resolved yourself.`
+        : ''
+      throw new sdkErrors.NotEnoughFundsError(`${rest} satoshis needed to cover the requested amount.${skipped}`)
     }
     const totalFee = baseFee + feePerInput * inputs.length
     if (totalFee > Number(amount) * this.maxFeeToAmountRatio) {
@@ -345,7 +368,7 @@ export class PowPegSDK {
     assertTruthy(funding, 'No funding context found for this PSBT. Create it with createPegin or createAndFundPsbt first.')
     const amount = value ?? BigInt(psbt.txOutputs[1].value)
     const resolvedFeeRate = feeRate !== undefined ? this.validateFeeRate(feeRate) : await this.getValidatedFeeRate(feeLevel)
-    const { inputs, change, totalFee } = await this.calculateFeeAndSelectedInputs(amount, funding.utxos, resolvedFeeRate)
+    const { inputs, change, totalFee } = await this.calculateFeeAndSelectedInputs(amount, funding.utxos, resolvedFeeRate, funding.skippedSatoshis)
     // Fetch all external data before the first PSBT mutation
     const hexTransactions = await Promise.all(inputs.map((input) => this.bitcoinDataSource.getTxHex(input.txid)))
     const parsedOutputs = hexTransactions.map((hex, index) => {
@@ -363,10 +386,14 @@ export class PowPegSDK {
       return output
     })
     inputs.forEach((input, index) => {
-      if (isP2shScript(parsedOutputs[index].script)) {
+      const script = parsedOutputs[index].script
+      if (!isSupportedFundingScript(script)) {
+        const detail = isP2shScript(script)
+          ? `the P2SH address ${input.address}. Signing it needs a redeem script the SDK cannot derive, because BitcoinSigner exposes addresses but not the public keys behind them.`
+          : `${input.address}, whose script type the SDK cannot build a signable input for.`
         throw new sdkErrors.UnsupportedAddressTypeError(
           input.address,
-          `UTXO ${input.txid}:${input.vout} is held by the P2SH address ${input.address}. Signing it needs a redeem script the SDK cannot derive, because BitcoinSigner exposes addresses but not the public keys behind them. Fund the peg-in from a legacy or native segwit address, or pass selectedUtxos that exclude this one.`,
+          `UTXO ${input.txid}:${input.vout} is held by ${detail} Fund the peg-in from a legacy (P2PKH) or native segwit (P2WPKH) address, or pass selectedUtxos that exclude this one.`,
         )
       }
     })
@@ -436,7 +463,7 @@ export class PowPegSDK {
       address: recipientAddress,
       value: Number(amount),
     })
-    this.funding.set(psbt, { utxos: [...utxos] })
+    this.funding.set(psbt, { utxos: [...utxos], skippedSatoshis: 0n })
     if (signer) {
       this.psbtSigner.set(psbt, signer)
     }
@@ -694,6 +721,14 @@ export class PowPegSDK {
   async signAndBroadcastPegout(tx: UnsignedPegout, signer: ethers.Signer) {
     const expectedChainId = this.rskNetworks[this.network].chainId
     const request = { ...tx, chainId: tx.chainId === undefined ? expectedChainId : tx.chainId }
+    assertTruthy(
+      typeof request.to === 'string' && request.to.toLowerCase() === this.bridge.address.toLowerCase(),
+      `A peg-out is a value transfer to the bridge at ${this.bridge.address}; this request is addressed to ${String(request.to)}.`,
+    )
+    assertTruthy(
+      request.data === undefined || request.data === '0x',
+      'A peg-out carries no calldata; remove the data field from the request.',
+    )
     if (request.chainId !== expectedChainId) {
       throw new sdkErrors.WrongNetworkError(`The transaction targets chain ${request.chainId}, but the SDK is configured for ${this.network} (chain ${expectedChainId}).`)
     }

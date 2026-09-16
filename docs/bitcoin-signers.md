@@ -37,17 +37,32 @@ be funded from UTXOs the address holds:
 | `'SEGWIT'` | BIP 49 | `49'` | P2SH-wrapped P2WPKH (`3…` / `2…`) | **not supported** |
 | `'NATIVE SEGWIT'` | BIP 84 | `84'` | P2WPKH (`bc1…` / `tb1…`) | supported |
 
+Funding is allowed for P2PKH and P2WPKH scripts and nothing else, decided from the UTXO's own
+`scriptPubKey` rather than from the shape of the address. That distinction matters for bech32: a P2WSH
+and a taproot address look like a P2WPKH one, and only the script tells them apart.
+
 A P2SH input can only be signed with the redeem script behind the address, which is derived from the
 public key. `BitcoinSigner` exposes addresses and a signing method, not public keys, so the SDK cannot
-build that input. Rather than hand back a PSBT that fails later inside the signer, `fundPegin` throws
-`UnsupportedAddressTypeError` naming the address. Fund from a legacy or native segwit address, or pass
-`selectedUtxos` that exclude the UTXO. The check runs before the PSBT is touched, so a refused UTXO
-leaves it exactly as `createPegin` returned it — no inputs added, no change output, and still fundable.
+build that input, and `fundPegin` throws `UnsupportedAddressTypeError` naming the address. Fund from a
+legacy or native segwit address, or pass `selectedUtxos` that exclude the UTXO. The check runs before the
+PSBT is touched, so a refused UTXO leaves it exactly as `createPegin` returned it — no inputs added, no
+change output, and still fundable.
+
+A UTXO held by any other script — P2WSH, taproot, a bare multisig — is refused the same way. Each needs a
+redeem script, a witness script or a key that `BitcoinSigner` does not expose, so the SDK cannot build a
+complete PSBT input for it.
+
+When `createPegin` discovers UTXOs itself, it looks only at the signer's legacy and native segwit
+addresses, so a wallet holding both types funds a peg-in from the part the SDK can sign. If what remains
+does not cover the amount, `NotEnoughFundsError` says how much was left out. The same preference applies
+to the change address: change goes to the first unused change address the SDK could fund from later,
+falling back to the first unused one, and then to the first funding input's address. `UnsupportedAddressTypeError`
+is therefore reserved for a UTXO the caller named in `selectedUtxos`.
 
 Every funding input carries `witnessUtxo`. A legacy input also carries `nonWitnessUtxo`, the full parent
-transaction, because it cannot be signed without it; a witness input does not, since it is signed from
-`witnessUtxo` alone and embedding the parent would add its entire size to the PSBT for nothing. So a
-signer built on bitcoinjs-lib can sign either supported type without fetching anything itself.
+transaction, which it needs to be signed; a witness input is signed from `witnessUtxo` alone and does not
+carry it. So a signer built on bitcoinjs-lib can sign either supported type without fetching anything
+itself.
 
 Coin type is `0'` on `MAIN` and `1'` on `TEST`, so a full account path reads
 `m/84'/1'/0'/0/<index>` for a native-segwit receive address on testnet, and `.../1/<index>` for a change

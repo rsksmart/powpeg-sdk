@@ -49,3 +49,23 @@ export function isWitnessProgramScript(script: Buffer) {
   }
   return script[1] === script.length - 2
 }
+
+/** Whether a scriptPubKey is P2PKH: `OP_DUP OP_HASH160 <20-byte hash> OP_EQUALVERIFY OP_CHECKSIG`. */
+export function isP2pkhScript(script: Buffer) {
+  return script.length === 25 && script[0] === 0x76 && script[1] === 0xA9 && script[2] === 0x14
+    && script[23] === 0x88 && script[24] === 0xAC
+}
+
+/** Whether a scriptPubKey is P2WPKH: witness version 0 with a 20-byte program. */
+export function isP2wpkhScript(script: Buffer) {
+  return script.length === 22 && script[0] === 0x00 && script[1] === 0x14
+}
+
+/**
+ * Whether the SDK can build a PSBT input a `BitcoinSigner` is able to sign for this scriptPubKey.
+ * P2PKH and P2WPKH are signable from the address alone; every other type needs a redeem script, a
+ * witness script or a key the signer contract does not expose.
+ */
+export function isSupportedFundingScript(script: Buffer) {
+  return isP2pkhScript(script) || isP2wpkhScript(script)
+}

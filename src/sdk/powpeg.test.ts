@@ -14,6 +14,8 @@ const btcAddresses = [
   'mgnucj8nYqdrPFh2JfZSB1NmUThUGnmsqe',
   '2N7eSt5myGSXoiAnqpzu856EwgA8SHg53Lg',
   'tb1qm0f4nu37q8u82txpj0l0cp924836gs2q4m9rdf',
+  // A P2WSH address: bech32 like the P2WPKH one above, so only its script tells them apart.
+  'tb1qfwcxlrjw8fm3t5sp64eap2jzxa3w2hdt6cdzcq3837jke3kjjnsqxl7n7z',
 ]
 
 /**
@@ -218,6 +220,86 @@ describe('sdk', () => {
       expect(funded.data.inputs[1].nonWitnessUtxo).toEqual(Buffer.from(legacyTx.hex, 'hex'))
       expect(() => funded.signInput(0, probeSigner)).not.toThrow()
       expect(() => funded.signInput(1, probeSigner)).not.toThrow()
+    })
+
+    it('should not discover UTXOs from P2SH addresses the signer derives', async () => {
+      const mixedSigner = {
+        getNonChangeAddresses: vi.fn().mockResolvedValue([btcAddresses[3], btcAddresses[4]]),
+        getChangeAddresses: vi.fn().mockResolvedValue([btcAddresses[0]]),
+        signTransaction: vi.fn(),
+      } satisfies BitcoinSigner
+      mockedDataSource.getAddressDetails.mockImplementation((address: string) => ({ address, balance: 2_000_000, txCount: 3 }))
+      const fundingTx = buildFundingTx(2_000_000, 0, 91, scriptsFor.nativeSegwit())
+      mockedDataSource.getTxHex.mockResolvedValue(fundingTx.hex)
+      mockedDataSource.getOutputs.mockImplementation((address: string) => [{ address, txid: fundingTx.txid, vout: 0, amount: 2_000_000n }])
+
+      const psbt = await sdk.createPegin(500_000n, rskAddresses[0], undefined, mixedSigner)
+      await sdk.fundPegin(psbt, 'average')
+
+      expect(mockedDataSource.getOutputs).toHaveBeenCalledWith(btcAddresses[4])
+      expect(mockedDataSource.getOutputs).not.toHaveBeenCalledWith(btcAddresses[3])
+    })
+
+    it('should not discover UTXOs from bech32 addresses whose script it cannot sign', async () => {
+      const witnessSigner = {
+        getNonChangeAddresses: vi.fn().mockResolvedValue([btcAddresses[5], btcAddresses[4]]),
+        getChangeAddresses: vi.fn().mockResolvedValue([btcAddresses[0]]),
+        signTransaction: vi.fn(),
+      } satisfies BitcoinSigner
+      mockedDataSource.getAddressDetails.mockImplementation((address: string) => ({ address, balance: 2_000_000, txCount: 3 }))
+      const fundingTx = buildFundingTx(2_000_000, 0, 94, scriptsFor.nativeSegwit())
+      mockedDataSource.getTxHex.mockResolvedValue(fundingTx.hex)
+      mockedDataSource.getOutputs.mockImplementation((address: string) => [{ address, txid: fundingTx.txid, vout: 0, amount: 2_000_000n }])
+
+      const psbt = await sdk.createPegin(500_000n, rskAddresses[0], undefined, witnessSigner)
+      await sdk.fundPegin(psbt, 'average')
+
+      expect(mockedDataSource.getOutputs).toHaveBeenCalledWith(btcAddresses[4])
+      expect(mockedDataSource.getOutputs).not.toHaveBeenCalledWith(btcAddresses[5])
+    })
+
+    it('should name the funds it skipped when the spendable ones do not cover the amount', async () => {
+      const p2shOnlySigner = {
+        getNonChangeAddresses: vi.fn().mockResolvedValue([btcAddresses[3]]),
+        getChangeAddresses: vi.fn().mockResolvedValue([]),
+        signTransaction: vi.fn(),
+      } satisfies BitcoinSigner
+      mockedDataSource.getAddressDetails.mockImplementation((address: string) => ({ address, balance: 5_000_000, txCount: 3 }))
+
+      const psbt = await sdk.createPegin(500_000n, rskAddresses[0], undefined, p2shOnlySigner)
+      const error = await sdk.fundPegin(psbt, 'average').catch((e) => e)
+
+      expect(error).toBeInstanceOf(NotEnoughFundsError)
+      expect(error.message).toContain('5000000 satoshis are held by addresses whose script type the SDK cannot build a signable input for')
+    })
+
+    it('should send change to a spendable address when the signer also derives P2SH ones', async () => {
+      const mixedChangeSigner = {
+        getNonChangeAddresses: vi.fn().mockResolvedValue([btcAddresses[1]]),
+        getChangeAddresses: vi.fn().mockResolvedValue([btcAddresses[3], btcAddresses[4]]),
+        signTransaction: vi.fn(),
+      } satisfies BitcoinSigner
+      mockedDataSource.getAddressDetails.mockImplementation((address: string) => ({ address, balance: 0, txCount: 0 }))
+      const fundingTx = buildFundingTx(2_000_000, 0, 92, scriptsFor.nativeSegwit())
+      mockedDataSource.getTxHex.mockResolvedValue(fundingTx.hex)
+      const utxo = { address: btcAddresses[1], txid: fundingTx.txid, vout: 0, amount: 2_000_000n }
+
+      const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [utxo], mixedChangeSigner)
+      const funded = await sdk.fundPegin(psbt, 'average')
+
+      expect(funded.psbt.txOutputs.at(-1)?.address).toBe(btcAddresses[4])
+    })
+
+    it.each([
+      ['P2WSH', () => payments.p2wsh({ hash: bitcoinJsCrypto.sha256(Buffer.alloc(32, 7)), network: bitcoinJsNetworks.testnet }).output as Buffer],
+      ['a bare multisig', () => Buffer.from(`5121${'0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798'}51ae`, 'hex')],
+    ])('should refuse a UTXO held by %s, which needs more than the address to sign', async (_label, build) => {
+      const fundingTx = buildFundingTx(1_000_000, 0, 93, build())
+      mockedDataSource.getTxHex.mockResolvedValue(fundingTx.hex)
+      const utxo = { address: btcAddresses[4], txid: fundingTx.txid, vout: 0, amount: 1_000_000n }
+      const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [utxo])
+
+      await expect(sdk.fundPegin(psbt, 'average')).rejects.toThrowError(UnsupportedAddressTypeError)
     })
 
     it('should refuse a UTXO held by a P2SH address', async () => {
@@ -502,6 +584,18 @@ describe('sdk', () => {
     expect(error.message).toContain('remains held by the Bridge')
   })
 
+  it.each([
+    ['maxBundleSize', { maxBundleSize: 0 }],
+    ['maxBundleSize', { maxBundleSize: -1 }],
+    ['burnDustValue', { burnDustValue: -1 }],
+    ['maxFeeRateSatPerByte', { maxFeeRateSatPerByte: 0 }],
+    ['maxFeeToAmountRatio', { maxFeeToAmountRatio: 0 }],
+    ['maxFeeToAmountRatio', { maxFeeToAmountRatio: 1e9 }],
+  ])('should refuse an out-of-range %s', (option, overrides) => {
+    expect(() => new PowPegSDK({ network: 'TEST', bitcoinSigner: mockedSigner, ...overrides }))
+      .toThrowError(option)
+  })
+
   it.each(['toString', '__proto__', 'constructor', 'hasOwnProperty'])('should refuse %s as a network name', (network) => {
     expect(() => new PowPegSDK({ network: network as unknown as 'TEST', bitcoinSigner: mockedSigner }))
       .toThrowError('Unknown network')
@@ -589,6 +683,24 @@ describe('sdk', () => {
     const { tx } = await sdk.createPegout('0.005', rskAddresses[0])
 
     await expect(sdk.signAndBroadcastPegout(tx, signer)).resolves.toEqual({ transactionHash: '0xsent', logs: [] })
+  })
+
+  it('should not send a peg-out addressed anywhere but the bridge', async () => {
+    const signer = pegoutSigner()
+    const { tx } = await sdk.createPegout('0.005', rskAddresses[0])
+
+    await expect(sdk.signAndBroadcastPegout({ ...tx, to: '0xdededededededededededededededededededede' }, signer))
+      .rejects.toThrowError('value transfer to the bridge')
+    expect(signer.sendTransaction).not.toHaveBeenCalled()
+  })
+
+  it('should not send a peg-out carrying calldata', async () => {
+    const signer = pegoutSigner()
+    const { tx } = await sdk.createPegout('0.005', rskAddresses[0])
+
+    await expect(sdk.signAndBroadcastPegout({ ...tx, data: '0xdeadbeef' }, signer))
+      .rejects.toThrowError('carries no calldata')
+    expect(signer.sendTransaction).not.toHaveBeenCalled()
   })
 
   it('should not send a peg-out whose chain id is not the configured one', async () => {

@@ -168,6 +168,7 @@ export class ApiService implements BitcoinDataSource {
   }
 
   async getFeeRate(level: FeeLevel): Promise<number> {
+    assertTruthy(Object.prototype.hasOwnProperty.call(this.feeLevelBlocks, level), `Unknown fee level ${String(level)}; use 'slow', 'average' or 'fast'.`)
     const blocks = this.feeLevelBlocks[level]
     const response = await this.api.get(`/estimate-fee/${blocks}`).catch(this.handleError)
     let satoshisPerKb: ethers.BigNumber
@@ -188,7 +189,7 @@ export class ApiService implements BitcoinDataSource {
   }
 
   async getTxHex(txId: string): Promise<string> {
-    const response = await this.api.get(`/tx?tx=${txId}`).catch(this.handleError)
+    const response = await this.api.get(`/tx?tx=${encodeURIComponent(txId)}`).catch(this.handleError)
     return response.data.hex
   }
 
@@ -220,7 +221,7 @@ export class ApiService implements BitcoinDataSource {
   }
 
   async getTransactionStatus<T extends TxType>(txHash: string, txType: T): Promise<Extract<StatusData, { type: T }>> {
-    const response = await this.api.get(`/tx-status-by-type/${txHash}/${txType}`).catch(this.handleError)
+    const response = await this.api.get(`/tx-status-by-type/${encodeURIComponent(txHash)}/${encodeURIComponent(txType)}`).catch(this.handleError)
     return response.data
   }
 
