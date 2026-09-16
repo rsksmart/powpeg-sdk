@@ -2,19 +2,20 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { ApiService } from './api'
 import { APIError } from '../errors'
 
-const { mockGet, mockPost, mockIsAxiosError, mockCreate, mockUse } = vi.hoisted(() => ({
+const { mockGet, mockPost, mockIsAxiosError, mockCreate, mockUse, mockRequestUse } = vi.hoisted(() => ({
   mockGet: vi.fn(),
   mockPost: vi.fn(),
   mockIsAxiosError: vi.fn(),
   mockCreate: vi.fn(),
   mockUse: vi.fn(),
+  mockRequestUse: vi.fn(),
 }))
 
 vi.mock('axios', () => ({
   default: {
     create: (...args: unknown[]) => {
       mockCreate(...args)
-      return { get: mockGet, post: mockPost, interceptors: { response: { use: mockUse } } }
+      return { get: mockGet, post: mockPost, interceptors: { request: { use: mockRequestUse }, response: { use: mockUse } } }
     },
     isAxiosError: mockIsAxiosError,
   },
@@ -148,6 +149,136 @@ describe('ApiService', () => {
 
       expect(interceptor()(response)).toBe(response)
     })
+
+    const rejectionHandler = () => mockUse.mock.calls[0][1] as (error: unknown) => unknown
+
+    it('should reject an error response served by another host', () => {
+      mockIsAxiosError.mockReturnValue(true)
+      const error = { response: { ...responseFrom('https://elsewhere.example/tx'), status: 401, data: { error: { message: 'Your session expired, re-enter your seed phrase' } } } }
+
+      expect(() => rejectionHandler()(error)).toThrowError(APIError)
+      expect(() => rejectionHandler()(error)).toThrowError('came from https://elsewhere.example')
+      expect(() => rejectionHandler()(error)).not.toThrowError('seed phrase')
+    })
+
+    it('should re-throw an error response served by the configured host untouched', () => {
+      mockIsAxiosError.mockReturnValue(true)
+      const error = { response: { ...responseFrom('https://api.2wp.testnet.rootstock.io/tx'), status: 404 } }
+
+      expect(() => rejectionHandler()(error)).toThrowError()
+      try {
+        rejectionHandler()(error)
+      }
+      catch (thrown) {
+        expect(thrown).toBe(error)
+      }
+    })
+
+    it('should re-throw an error that carries no response', () => {
+      mockIsAxiosError.mockReturnValue(true)
+      const error = { code: 'ECONNABORTED' }
+
+      expect(() => rejectionHandler()(error)).toThrow()
+      expect(() => rejectionHandler()(error)).not.toThrowError(APIError)
+    })
+  })
+
+  describe('request deadline', () => {
+    const requestInterceptor = () => mockRequestUse.mock.calls[0][0] as (config: Record<string, unknown>) => Record<string, unknown>
+
+    it('should give every request a wall-clock deadline', () => {
+      const config = requestInterceptor()({ timeout: 10_000 })
+
+      expect(config.signal).toBeInstanceOf(AbortSignal)
+    })
+
+    it('should derive the deadline from the request its own timeout, so broadcasting keeps its longer bound', () => {
+      const timeoutSpy = vi.spyOn(AbortSignal, 'timeout')
+
+      requestInterceptor()({ timeout: 60_000 })
+
+      expect(timeoutSpy).toHaveBeenCalledWith(60_000)
+      timeoutSpy.mockRestore()
+    })
+
+    it('should leave a signal the caller already set alone', () => {
+      const existing = new AbortController().signal
+      const config = requestInterceptor()({ timeout: 10_000, signal: existing })
+
+      expect(config.signal).toBe(existing)
+    })
+  })
+
+  describe('requestTimeoutMs validation', () => {
+    it.each([0, -1, 1.5, Number.NaN])('should refuse a requestTimeoutMs of %s', (value) => {
+      expect(() => new ApiService('TEST', undefined, 1000, value)).toThrowError('positive integer')
+    })
+
+    it('should refuse a requestTimeoutMs the abort timer cannot represent', () => {
+      expect(() => new ApiService('TEST', undefined, 1000, 5_000_000_000)).toThrowError('no greater than')
+    })
+
+    it('should accept a positive integer', () => {
+      expect(() => new ApiService('TEST', undefined, 1000, 5000)).not.toThrowError()
+    })
+  })
+
+  describe('error message hygiene', () => {
+    it('should strip control characters from a message the API returned', () => {
+      mockIsAxiosError.mockReturnValue(true)
+      mockGet.mockRejectedValue({ response: { status: 400, data: { message: 'bad\u001b[31mrequest\u0007' } } })
+
+      return expect(apiService.getTxHex('aaaa')).rejects.toThrowError(/^bad \[31mrequest$/)
+    })
+
+    it('should bound the length of a message the API returned', async () => {
+      mockIsAxiosError.mockReturnValue(true)
+      mockGet.mockRejectedValue({ response: { status: 400, data: { message: 'x'.repeat(5000) } } })
+
+      const error = await apiService.getTxHex('aaaa').catch((e) => e)
+
+      expect(error.message).toHaveLength(301)
+      expect(error.message.endsWith('…')).toBe(true)
+    })
+
+    it('should strip C1 control characters as well as C0', async () => {
+      mockIsAxiosError.mockReturnValue(true)
+      mockGet.mockRejectedValue({ response: { status: 400, data: { message: 'bad\u0085request\u009b31m' } } })
+
+      await expect(apiService.getTxHex('aaaa')).rejects.toThrowError(/^bad request 31m$/)
+    })
+
+    it('should keep a message of exactly the maximum length whole', async () => {
+      mockIsAxiosError.mockReturnValue(true)
+      mockGet.mockRejectedValue({ response: { status: 400, data: { message: 'y'.repeat(300) } } })
+
+      const error = await apiService.getTxHex('aaaa').catch((e) => e)
+
+      expect(error.message).toBe('y'.repeat(300))
+    })
+
+    it('should not split a multi-byte character when it truncates', async () => {
+      mockIsAxiosError.mockReturnValue(true)
+      mockGet.mockRejectedValue({ response: { status: 400, data: { message: `${'z'.repeat(299)}😀tail` } } })
+
+      const error = await apiService.getTxHex('aaaa').catch((e) => e)
+
+      expect(error.message).toBe(`${'z'.repeat(299)}😀…`)
+    })
+
+    it('should sanitize the message after unwrapping a serialized JSON document, not before', async () => {
+      mockIsAxiosError.mockReturnValue(true)
+      mockGet.mockRejectedValue({ response: { status: 400, data: { message: JSON.stringify({ message: 'inner\nmessage' }) } } })
+
+      await expect(apiService.getTxHex('aaaa')).rejects.toThrowError(/^inner message$/)
+    })
+
+    it('should fall back to the generic message when the API message is only control characters', async () => {
+      mockIsAxiosError.mockReturnValue(true)
+      mockGet.mockRejectedValue({ response: { status: 400, data: { message: '\u0000\u0001' } } })
+
+      await expect(apiService.getTxHex('aaaa')).rejects.toThrowError('Server error')
+    })
   })
 
   it('should refuse redirects on every adapter it can run on', () => {
@@ -168,11 +299,19 @@ describe('ApiService', () => {
     expect(mockPost).toHaveBeenCalledWith('/broadcast', { data: '00' }, { timeout: 60_000 })
   })
 
-  it('should name a timeout instead of reporting it as no response', async () => {
+  it('should name a connection-level timeout instead of reporting it as no response', async () => {
     mockIsAxiosError.mockReturnValue(true)
-    mockGet.mockRejectedValue({ code: 'ECONNABORTED', message: 'timeout of 10000ms exceeded', request: {} })
+    mockGet.mockRejectedValue({ code: 'ETIMEDOUT', message: 'connect ETIMEDOUT 10.0.0.1:443', request: {} })
 
     await expect(apiService.getFeeRate('fast')).rejects.toThrow('The API did not respond in time')
+    await expect(apiService.getFeeRate('fast')).rejects.not.toThrow('No response from server')
+  })
+
+  it('should name the deadline that elapsed when the request is aborted', async () => {
+    mockIsAxiosError.mockReturnValue(true)
+    mockGet.mockRejectedValue({ code: 'ERR_CANCELED', message: 'canceled', request: {}, config: { timeout: 2_500 } })
+
+    await expect(apiService.getFeeRate('fast')).rejects.toThrow('within the 2500ms deadline')
     await expect(apiService.getFeeRate('fast')).rejects.not.toThrow('No response from server')
   })
 

@@ -3,7 +3,7 @@ import { TxType } from '../types'
 import type { BitcoinDataSource, FeeLevel, Utxo, AddressWithDetails, StatusData, Feature } from '../types'
 import { type Network } from '../constants'
 import { APIError } from '../errors'
-import { ethers } from '@rsksmart/bridges-core-sdk'
+import { assertTruthy, ethers } from '@rsksmart/bridges-core-sdk'
 
 type UtxoResponse2WP = {
   data: {
@@ -16,6 +16,9 @@ type UtxoResponse2WP = {
     confirmations: number
   }[]
 }
+
+const maxErrorMessageLength = 300
+const maxRequestTimeoutMs = 2_147_483_647
 
 function firstNonEmptyString(candidates: unknown[]): string | undefined {
   return candidates.find((candidate): candidate is string => typeof candidate === 'string' && candidate.length > 0)
@@ -57,12 +60,23 @@ function finalUrlOf(response: AxiosResponse): string | undefined {
   return request?.responseURL ?? request?.res?.responseUrl
 }
 
+/** Bounds a message coming from the API and strips control characters, so it stays safe to print. */
+function sanitizeMessage(message: string): string {
+  // eslint-disable-next-line no-control-regex
+  const stripped = message.replace(/[\u0000-\u001F\u007F-\u009F]/g, ' ').trim()
+  if (stripped.length <= maxErrorMessageLength) {
+    return stripped
+  }
+  return `${[...stripped].slice(0, maxErrorMessageLength).join('')}…`
+}
+
 function getErrorMessage(data: unknown): string {
   const message = firstNonEmptyString([
     (data as { error?: { message?: unknown } })?.error?.message,
     (data as { message?: unknown })?.message,
   ])
-  return message ? unwrapJsonMessage(message) : 'Server error'
+  const sanitized = message ? sanitizeMessage(unwrapJsonMessage(message)) : ''
+  return sanitized || 'Server error'
 }
 
 export class ApiService implements BitcoinDataSource {
@@ -81,6 +95,7 @@ export class ApiService implements BitcoinDataSource {
   private minBroadcastTimeoutMs = 60_000
 
   constructor(network: Network, apiUrl?: string, private readonly maxFeeRateSatPerByte = 1000, private readonly requestTimeoutMs = 10_000) {
+    assertTruthy(Number.isInteger(requestTimeoutMs) && requestTimeoutMs > 0 && requestTimeoutMs <= maxRequestTimeoutMs, `requestTimeoutMs must be a positive integer no greater than ${maxRequestTimeoutMs}, got ${requestTimeoutMs}.`)
     const baseURL = apiUrl ?? this.apiUrls[network]
     this.apiOrigin = originOf(baseURL)
     this.api = axios.create({
@@ -92,7 +107,19 @@ export class ApiService implements BitcoinDataSource {
       adapter: ['xhr', 'http', 'fetch'],
       fetchOptions: { redirect: 'error' },
     })
-    this.api.interceptors.response.use((response) => this.assertSameOrigin(response))
+    this.api.interceptors.request.use((config) => {
+      config.signal ??= AbortSignal.timeout(config.timeout || this.requestTimeoutMs)
+      return config
+    })
+    this.api.interceptors.response.use(
+      (response) => this.assertSameOrigin(response),
+      (error: unknown) => {
+        if (axios.isAxiosError(error) && error.response) {
+          this.assertSameOrigin(error.response)
+        }
+        throw error
+      },
+    )
   }
 
   /**
@@ -123,6 +150,9 @@ export class ApiService implements BitcoinDataSource {
       }
       if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
         throw new APIError(`The API did not respond in time: ${error.message}`)
+      }
+      if (error.code === 'ERR_CANCELED') {
+        throw new APIError(`The API did not answer within the ${error.config?.timeout}ms deadline.`)
       }
       if (error.code === 'ERR_BAD_RESPONSE') {
         throw new APIError(`The API response was rejected: ${error.message}`)

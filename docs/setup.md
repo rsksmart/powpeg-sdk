@@ -78,17 +78,22 @@ The bare strings `'MAIN'` and `'TEST'` are still accepted, so either style works
 | `burnDustValue` | Change amount, in satoshis, below which it's dropped into the fee instead of added as an output | `2000` |
 | `maxFeeRateSatPerByte` | Upper bound, in sat/B, for a fee rate coming from the configured `BitcoinDataSource`; a higher value throws `InvalidFeeRateError` | `1000` |
 | `maxFeeToAmountRatio` | Upper bound for the ratio of total fee to peg-in amount; a higher ratio throws `InvalidFeeRateError` | `0.5` |
-| `requestTimeoutMs` | Milliseconds before a request to the API is aborted | `10000` |
+| `requestTimeoutMs` | Milliseconds before a request to the API is aborted; must be a positive integer | `10000` |
 
 ## Limits and behaviour worth knowing
 
-- **Transport limits are adapter-dependent.** The request timeout applies everywhere. The response-size
-  cap (10 MB) is enforced by axios's Node adapter only — a browser consumer does not get it. Redirects
+- **Transport limits are adapter-dependent.** Every request carries a wall-clock deadline, enforced with
+  an abort signal that all three adapters honour; axios's own `timeout` covers only the connect and idle
+  phases on the Node adapter, so a server trickling bytes would otherwise hold a request open past it.
+  The response-size cap (10 MB) is enforced by axios's Node adapter only — a browser consumer does not
+  get it. Redirects
   are refused on every adapter: `maxRedirects: 0` covers Node, `fetchOptions.redirect: 'error'` covers
   the fetch adapter, and a response served by a host other than the configured one is rejected by an
   interceptor, which is what covers the browser adapter.
 - **Broadcasting gets a longer bound than a read** (60 seconds, or the configured timeout if larger),
-  because aborting it cannot un-relay a transaction that may already be in the mempool.
+  because aborting it cannot un-relay a transaction that may already be in the mempool. The deadline is
+  enforced even once the response has started arriving, so a broadcast that exceeds it fails without
+  telling you whether the transaction reached the network — check its status rather than re-broadcasting.
 - **The peg-out minimum is derived from the Bridge**, from its fee per kb and the active federation, and
   is taken as the larger of the size rule in force today and the one that activates with RSKIP378. That
   is never below the minimum the Bridge enforces; above a `feePerKb` of roughly 345,000 on mainnet it can
@@ -122,8 +127,12 @@ The bare strings `'MAIN'` and `'TEST'` are still accepted, so either style works
   object key` through `JsonRpcSigner`). TypeScript catches such a field only when the request is written
   as a literal at the call site, not when it is built in a variable first.
 - Four error types are new — `SigningError`, `WrongNetworkError`, `PegoutRejectedError` and
-  `UnsupportedSenderError` — and `APIError.message` now carries the API's own message rather than a
-  constant. Code that classifies SDK failures by message text should be re-checked.
+  `UnsupportedSenderError` — and `APIError.message` now derives from the API's own message rather than a
+  constant: control characters are replaced with spaces and the text is capped at 300 characters, so a
+  message that survives is the API's own wording but not necessarily byte-for-byte. Code that classifies
+  SDK failures by message text should be re-checked.
+- `requestTimeoutMs` is validated: it must be a positive integer no greater than 2147483647. `0`, which
+  1.x accepted as "no timeout", now throws at construction.
 
 ## External dependencies
 
