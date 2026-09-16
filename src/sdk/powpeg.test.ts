@@ -449,10 +449,60 @@ describe('sdk', () => {
     const { tx } = await sdk.createPegout('0.005', rskAddresses[0])
     const receipt = await sdk.signAndBroadcastPegout(tx, signer)
 
-    expect(signer.sendTransaction).toHaveBeenCalledWith({ from: tx.from, to: tx.to, value: tx.value })
+    expect(signer.sendTransaction).toHaveBeenCalledWith(tx)
     expect(tx.chainId).toBe(31)
     expect(waitForTransaction).toHaveBeenCalledWith('0xsent')
     expect(receipt).toEqual({ transactionHash: '0xreceipt', logs: [] })
+  })
+
+  const pegoutSigner = (chainId = 31) => ({
+    getChainId: vi.fn().mockResolvedValue(chainId),
+    sendTransaction: vi.fn().mockResolvedValue({ hash: '0xsent' }),
+    provider: { waitForTransaction: vi.fn().mockResolvedValue({ transactionHash: '0xreceipt', logs: [] }) },
+  } as unknown as ethers.Signer)
+
+  it('should forward every field the caller set to the signer', async () => {
+    const signer = pegoutSigner()
+    const { tx } = await sdk.createPegout('0.005', rskAddresses[0])
+    const request = { ...tx, gasPrice: '0x1', nonce: 7, gasLimit: '0x5208', type: 0 }
+
+    await sdk.signAndBroadcastPegout(request, signer)
+
+    expect(signer.sendTransaction).toHaveBeenCalledWith(request)
+  })
+
+  it('should not send a peg-out whose chain id is not the configured one', async () => {
+    const signer = pegoutSigner()
+    const { tx } = await sdk.createPegout('0.005', rskAddresses[0])
+
+    await expect(sdk.signAndBroadcastPegout({ ...tx, chainId: 1 }, signer)).rejects.toThrow(WrongNetworkError)
+    expect(signer.sendTransaction).not.toHaveBeenCalled()
+  })
+
+  it('should not send a peg-out whose chain id is zero', async () => {
+    const signer = pegoutSigner()
+    const { tx } = await sdk.createPegout('0.005', rskAddresses[0])
+
+    await expect(sdk.signAndBroadcastPegout({ ...tx, chainId: 0 }, signer)).rejects.toThrow(WrongNetworkError)
+    expect(signer.sendTransaction).not.toHaveBeenCalled()
+  })
+
+  it('should reject a chain id that is not a number with a typed error', async () => {
+    const signer = pegoutSigner()
+    const { tx } = await sdk.createPegout('0.005', rskAddresses[0])
+
+    await expect(sdk.signAndBroadcastPegout({ ...tx, chainId: null as unknown as number }, signer)).rejects.toThrow(WrongNetworkError)
+    expect(signer.sendTransaction).not.toHaveBeenCalled()
+  })
+
+  it('should stamp the configured chain id on a request that omits it', async () => {
+    const signer = pegoutSigner()
+    const { tx } = await sdk.createPegout('0.005', rskAddresses[0])
+    const withoutChainId = { from: tx.from, to: tx.to, value: tx.value, gasPrice: '0x1', nonce: 7, gasLimit: '0x5208' }
+
+    await sdk.signAndBroadcastPegout(withoutChainId, signer)
+
+    expect(signer.sendTransaction).toHaveBeenCalledWith({ ...withoutChainId, chainId: 31 })
   })
 
   it('should pass its own bounds through to the default ApiService', () => {

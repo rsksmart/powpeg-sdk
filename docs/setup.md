@@ -98,6 +98,14 @@ The bare strings `'MAIN'` and `'TEST'` are still accepted, so either style works
   release requested from a contract *without refunding it*.
 - **The provider is pinned to the configured network's chain id**, so a node reporting a different chain
   fails on its first call — including a local regtest or fork node.
+- **The peg-out request carries its `chainId`**, and `signAndBroadcastPegout` hands the request to the
+  signer as given, so gas, nonce and fee fields set by the caller are honoured — a replacement for a
+  stuck peg-out reaches the node as a replacement. Both the request's `chainId` and
+  `signer.getChainId()` are checked against the configured network first, and either mismatch throws
+  `WrongNetworkError`; a request that omits `chainId` is stamped with the configured one. What the
+  forwarded `chainId` is then worth at send time depends on the signer: ethers asserts it when it signs
+  the transaction itself, while `JsonRpcSigner` passes it to the wallet without checking, so a browser
+  wallet enforces it only if it chooses to.
 
 ## Migrating from 1.x
 
@@ -106,6 +114,13 @@ The bare strings `'MAIN'` and `'TEST'` are still accepted, so either style works
 - The constructor takes a single options object instead of nine positional parameters:
   `new PowPegSDK(signer, dataSource, 'TEST', undefined, apiUrl)` becomes
   `new PowPegSDK({ network: Network.TEST, bitcoinSigner: signer, bitcoinDataSource: dataSource, apiUrl })`.
+- `signAndBroadcastPegout`'s first parameter is now the exported `UnsignedPegout` type, which extends
+  ethers' `TransactionRequest`. A request built by hand still needs `from`, `to` and `value`; the gas,
+  nonce and fee fields ethers serializes are now allowed and forwarded. The request reaches the signer
+  as given, so a field ethers does not recognise is no longer dropped in silence — it reaches ethers and
+  is rejected there (`invalid transaction key` when the signer signs the transaction itself, `invalid
+  object key` through `JsonRpcSigner`). TypeScript catches such a field only when the request is written
+  as a literal at the call site, not when it is built in a variable first.
 - Four error types are new — `SigningError`, `WrongNetworkError`, `PegoutRejectedError` and
   `UnsupportedSenderError` — and `APIError.message` now carries the API's own message rather than a
   constant. Code that classifies SDK failures by message text should be re-checked.

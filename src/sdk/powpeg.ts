@@ -1,5 +1,5 @@
 import { address, payments, Psbt, Transaction } from 'bitcoinjs-lib'
-import type { BitcoinDataSource, BitcoinSigner, Utxo, FeeLevel, AddressWithDetails, PegoutFeeEstimation, Feature, TxType, UnsignedPegin, PowPegSDKOptions, RejectedPegoutReason } from '../types'
+import type { BitcoinDataSource, BitcoinSigner, Utxo, FeeLevel, AddressWithDetails, PegoutFeeEstimation, Feature, TxType, UnsignedPegin, UnsignedPegout, PowPegSDKOptions, RejectedPegoutReason } from '../types'
 import { RejectedPegoutReasons } from '../types'
 import { networks, type Network } from '../constants'
 import { getAddressType, remove0x } from '../utils'
@@ -674,19 +674,23 @@ export class PowPegSDK {
   /**
    * Sends a peg-out transaction (as returned by {@link createPegout}) using the given ethers signer
    * and waits for it to be mined.
-   * @param {{ from: string, to: string, value: string, chainId?: number }} tx - The peg-out transaction request, as returned by {@link createPegout}.
+   * @param {UnsignedPegout} tx - The peg-out transaction request, as returned by {@link createPegout}. Forwarded to the signer as given, so gas, nonce and fee fields set by the caller are honoured; only an absent chain id is filled in.
    * @param {ethers.Signer} signer - Ethers signer used to send the transaction.
    * @returns The mined transaction receipt, if the signer's provider is set.
-   * @throws {WrongNetworkError} If the signer's chain doesn't match the network the SDK was configured for.
+   * @throws {WrongNetworkError} If the transaction's chain id, or the signer's chain, doesn't match the network the SDK was configured for.
    * @throws {PegoutRejectedError} If the transaction was mined but the Bridge rejected and refunded the release request.
    */
-  async signAndBroadcastPegout(tx: { from: string, to: string, value: string, chainId?: number }, signer: ethers.Signer) {
+  async signAndBroadcastPegout(tx: UnsignedPegout, signer: ethers.Signer) {
     const expectedChainId = this.rskNetworks[this.network].chainId
+    const request = { ...tx, chainId: tx.chainId === undefined ? expectedChainId : tx.chainId }
+    if (request.chainId !== expectedChainId) {
+      throw new sdkErrors.WrongNetworkError(`The transaction targets chain ${request.chainId}, but the SDK is configured for ${this.network} (chain ${expectedChainId}).`)
+    }
     const signerChainId = await signer.getChainId()
     if (signerChainId !== expectedChainId) {
       throw new sdkErrors.WrongNetworkError(`Signer is on chain ${signerChainId}, but the SDK is configured for ${this.network} (chain ${expectedChainId}).`)
     }
-    const { hash } = await signer.sendTransaction({ from: tx.from, to: tx.to, value: tx.value })
+    const { hash } = await signer.sendTransaction(request)
     const receipt = await signer.provider?.waitForTransaction(hash)
     if (receipt) {
       const rejected = this.bridge.findRejectedPegout(receipt.logs ?? [])

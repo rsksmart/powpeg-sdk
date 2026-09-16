@@ -1,4 +1,5 @@
 import { Psbt } from 'bitcoinjs-lib'
+import type { ethers } from '@rsksmart/bridges-core-sdk'
 import type { Network } from './constants'
 
 /** Configuration for {@link PowPegSDK}. Only `network` is required. */
@@ -181,6 +182,20 @@ export interface PeginStatusData {
 
 /** Discriminated union of the two possible {@link PowPegSDK.getTransactionStatus} payloads. */
 export type StatusData = PegoutStatusData | PeginStatusData
+
+/**
+ * An unsigned peg-out transaction request, as returned by {@link PowPegSDK.createPegout}.
+ * Extends ethers' own request type, so gas, nonce and fee fields a caller sets are carried through to the
+ * signer. `customData` and `ccipReadEnabled` are excluded because neither survives ethers' own transaction
+ * serialization, on either signer type.
+ */
+export interface UnsignedPegout extends Omit<ethers.providers.TransactionRequest, 'customData' | 'ccipReadEnabled'> {
+  from: string
+  to: string
+  value: string
+  /** Chain the request targets. Filled in with the SDK's configured chain when omitted, and rejected when it names another chain. */
+  chainId?: number
+}
 
 /** An unsigned, fee-funded peg-in PSBT ready to be signed, as returned by {@link PowPegSDK.createAndFundPegin}. */
 export interface UnsignedPegin {
