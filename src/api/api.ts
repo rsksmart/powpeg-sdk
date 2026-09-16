@@ -60,7 +60,7 @@ function finalUrlOf(response: AxiosResponse): string | undefined {
   return request?.responseURL ?? request?.res?.responseUrl
 }
 
-/** Bounds a message coming from the API and strips control characters, so it stays safe to print. */
+/** Bounds a message coming from the API and replaces control characters with spaces. */
 function sanitizeMessage(message: string): string {
   // eslint-disable-next-line no-control-regex
   const stripped = message.replace(/[\u0000-\u001F\u007F-\u009F]/g, ' ').trim()

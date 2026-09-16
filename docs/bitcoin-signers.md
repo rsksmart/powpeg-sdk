@@ -28,13 +28,26 @@ export interface BitcoinSigner {
 ## Address types and derivation
 
 Addresses passed to `PowPegSDK` may be `'LEGACY'`, `'SEGWIT'` or `'NATIVE SEGWIT'`; deriving them at the
-chosen type is the signer's responsibility. The values the SDK expects for each:
+chosen type is the signer's responsibility. The values the SDK expects for each, and whether a peg-in can
+be funded from UTXOs the address holds:
 
-| Address type | BIP | Purpose (`m/<purpose>'`) | Address format |
-|---|---|---|---|
-| `'LEGACY'` | BIP 44 | `44'` | P2PKH (`1…` / `m…`, `n…`) |
-| `'SEGWIT'` | BIP 49 | `49'` | P2SH-wrapped P2WPKH (`3…` / `2…`) |
-| `'NATIVE SEGWIT'` | BIP 84 | `84'` | P2WPKH (`bc1…` / `tb1…`) |
+| Address type | BIP | Purpose (`m/<purpose>'`) | Address format | Funding a peg-in |
+|---|---|---|---|---|
+| `'LEGACY'` | BIP 44 | `44'` | P2PKH (`1…` / `m…`, `n…`) | supported |
+| `'SEGWIT'` | BIP 49 | `49'` | P2SH-wrapped P2WPKH (`3…` / `2…`) | **not supported** |
+| `'NATIVE SEGWIT'` | BIP 84 | `84'` | P2WPKH (`bc1…` / `tb1…`) | supported |
+
+A P2SH input can only be signed with the redeem script behind the address, which is derived from the
+public key. `BitcoinSigner` exposes addresses and a signing method, not public keys, so the SDK cannot
+build that input. Rather than hand back a PSBT that fails later inside the signer, `fundPegin` throws
+`UnsupportedAddressTypeError` naming the address. Fund from a legacy or native segwit address, or pass
+`selectedUtxos` that exclude the UTXO. The check runs before the PSBT is touched, so a refused UTXO
+leaves it exactly as `createPegin` returned it — no inputs added, no change output, and still fundable.
+
+Every funding input carries `witnessUtxo`. A legacy input also carries `nonWitnessUtxo`, the full parent
+transaction, because it cannot be signed without it; a witness input does not, since it is signed from
+`witnessUtxo` alone and embedding the parent would add its entire size to the PSBT for nothing. So a
+signer built on bitcoinjs-lib can sign either supported type without fetching anything itself.
 
 Coin type is `0'` on `MAIN` and `1'` on `TEST`, so a full account path reads
 `m/84'/1'/0'/0/<index>` for a native-segwit receive address on testnet, and `.../1/<index>` for a change

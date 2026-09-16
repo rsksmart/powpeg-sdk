@@ -2,7 +2,7 @@ import { address, payments, Psbt, Transaction } from 'bitcoinjs-lib'
 import type { BitcoinDataSource, BitcoinSigner, Utxo, FeeLevel, AddressWithDetails, PegoutFeeEstimation, Feature, TxType, UnsignedPegin, UnsignedPegout, PowPegSDKOptions, RejectedPegoutReason } from '../types'
 import { RejectedPegoutReasons } from '../types'
 import { networks, type Network } from '../constants'
-import { getAddressType, remove0x } from '../utils'
+import { getAddressType, isP2shScript, isWitnessProgramScript, remove0x } from '../utils'
 import { Bridge } from '../bridge'
 import { ApiService } from '../api/api'
 import * as sdkErrors from '../errors'
@@ -362,6 +362,14 @@ export class PowPegSDK {
       )
       return output
     })
+    inputs.forEach((input, index) => {
+      if (isP2shScript(parsedOutputs[index].script)) {
+        throw new sdkErrors.UnsupportedAddressTypeError(
+          input.address,
+          `UTXO ${input.txid}:${input.vout} is held by the P2SH address ${input.address}. Signing it needs a redeem script the SDK cannot derive, because BitcoinSigner exposes addresses but not the public keys behind them. Fund the peg-in from a legacy or native segwit address, or pass selectedUtxos that exclude this one.`,
+        )
+      }
+    })
     const initialInputCount = psbt.txInputs.length
     const initialOutputCount = psbt.txOutputs.length
     const addChange = change > Math.min(this.burnDustValue, this.burnDustMaxValue)
@@ -379,6 +387,8 @@ export class PowPegSDK {
       psbt.addInput({
         hash: input.txid,
         index: input.vout,
+        // A witness input is signed from witnessUtxo alone; a legacy input needs its parent transaction.
+        ...(isWitnessProgramScript(output.script) ? {} : { nonWitnessUtxo: Buffer.from(hexTransactions[index], 'hex') }),
         witnessUtxo: {
           script: output.script,
           value: output.value,

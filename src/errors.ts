@@ -123,3 +123,18 @@ export class TransactionRevertedError extends Error {
     this.receipt = receipt
   }
 }
+
+/**
+ * Thrown when a UTXO is held by an address whose type the SDK cannot build a signable PSBT input for.
+ * A P2SH input needs a redeem script derived from the public key behind the address, and `BitcoinSigner`
+ * exposes addresses only.
+ */
+export class UnsupportedAddressTypeError extends Error {
+  readonly address: string
+
+  constructor(address: string, message?: string) {
+    super(message)
+    this.name = 'UnsupportedAddressTypeError'
+    this.address = address
+  }
+}

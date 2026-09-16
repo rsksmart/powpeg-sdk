@@ -1,9 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { networks as bitcoinJsNetworks, payments, Psbt, Transaction } from 'bitcoinjs-lib'
+import { crypto as bitcoinJsCrypto, networks as bitcoinJsNetworks, payments, Psbt, Transaction } from 'bitcoinjs-lib'
 import { PowPegSDK } from './powpeg'
 import { ApiService } from '../api/api'
 import type { BitcoinSigner, BitcoinDataSource } from '../types'
-import { AmountBelowMinError, NotEnoughFundsError, InvalidAddressError, FederationAddressError, InvalidFeeRateError, SigningError, WrongNetworkError, PegoutRejectedError, UnsupportedSenderError, TransactionRevertedError } from '../errors'
+import { AmountBelowMinError, NotEnoughFundsError, InvalidAddressError, FederationAddressError, InvalidFeeRateError, SigningError, WrongNetworkError, PegoutRejectedError, UnsupportedSenderError, TransactionRevertedError, UnsupportedAddressTypeError } from '../errors'
 import { bridge as bridgePrecompile } from '@rsksmart/rsk-precompiled-abis'
 import { ethers } from '@rsksmart/bridges-core-sdk'
 import { TxType, PegoutStatuses, PeginStatuses } from '../types'
@@ -21,14 +21,25 @@ const btcAddresses = [
  * now verifies both against the UTXO claiming to spend it, so a fixture's txid/value can no
  * longer be picked independently of the hex it's paired with.
  */
-function buildFundingTx(value: number, vout = 0, salt = 9): { hex: string, txid: string } {
+function buildFundingTx(value: number, vout = 0, salt = 9, script = Buffer.from(`0014${'00'.repeat(20)}`, 'hex')): { hex: string, txid: string } {
   const tx = new Transaction()
   tx.version = 2
   tx.addInput(Buffer.alloc(32, salt), 0)
   for (let i = 0; i <= vout; i++) {
-    tx.addOutput(Buffer.from(`0014${'00'.repeat(20)}`, 'hex'), i === vout ? value : 1_000)
+    tx.addOutput(script, i === vout ? value : 1_000)
   }
   return { hex: tx.toHex(), txid: tx.getId() }
+}
+
+// A fixed key, so a funding output can be built that the throwaway signer below is actually able to
+// sign: bitcoinjs refuses to sign an input whose script does not carry the signer's public key.
+const probePublicKey = Buffer.from('0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798', 'hex')
+const probeKeyHash = bitcoinJsCrypto.hash160(probePublicKey)
+const probeSigner = { publicKey: probePublicKey, sign: () => Buffer.alloc(64, 1) }
+const scriptsFor = {
+  legacy: () => payments.p2pkh({ hash: probeKeyHash, network: bitcoinJsNetworks.testnet }).output as Buffer,
+  p2sh: () => payments.p2sh({ redeem: payments.p2wpkh({ hash: probeKeyHash, network: bitcoinJsNetworks.testnet }), network: bitcoinJsNetworks.testnet }).output as Buffer,
+  nativeSegwit: () => payments.p2wpkh({ hash: probeKeyHash, network: bitcoinJsNetworks.testnet }).output as Buffer,
 }
 
 const rskAddresses = [
@@ -166,6 +177,83 @@ describe('sdk', () => {
 
     expect(fundedPsbt).toBeDefined()
   })
+  describe('funding input address types', () => {
+    const fundFrom = async (script: Buffer) => {
+      const fundingTx = buildFundingTx(1_000_000, 0, 77, script)
+      mockedDataSource.getTxHex.mockResolvedValue(fundingTx.hex)
+      const utxo = { address: btcAddresses[3], txid: fundingTx.txid, vout: 0, amount: 1_000_000n }
+      const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [utxo])
+      return { funded: await sdk.fundPegin(psbt, 'average'), fundingTx }
+    }
+
+    it('should produce a legacy input the signer can actually sign', async () => {
+      const { funded, fundingTx } = await fundFrom(scriptsFor.legacy())
+
+      expect(funded.psbt.data.inputs[0].nonWitnessUtxo).toEqual(Buffer.from(fundingTx.hex, 'hex'))
+      expect(() => funded.psbt.signInput(0, probeSigner)).not.toThrow()
+    })
+
+    it('should produce a native segwit input the signer can actually sign', async () => {
+      const { funded } = await fundFrom(scriptsFor.nativeSegwit())
+
+      expect(() => funded.psbt.signInput(0, probeSigner)).not.toThrow()
+    })
+
+    it('should carry the parent transaction only on the inputs that need it to be signed', async () => {
+      // The segwit UTXO is the larger one, so input selection takes it first and the legacy input
+      // lands at index 1.
+      const segwitTx = buildFundingTx(900_000, 0, 81, scriptsFor.nativeSegwit())
+      const legacyTx = buildFundingTx(800_000, 0, 82, scriptsFor.legacy())
+      mockedDataSource.getTxHex.mockImplementation((txid: string) => Promise.resolve(txid === segwitTx.txid ? segwitTx.hex : legacyTx.hex))
+      const utxos = [
+        { address: btcAddresses[4], txid: segwitTx.txid, vout: 0, amount: 900_000n },
+        { address: btcAddresses[0], txid: legacyTx.txid, vout: 0, amount: 800_000n },
+      ]
+      const psbt = await sdk.createPegin(1_200_000n, rskAddresses[0], utxos)
+
+      const { psbt: funded } = await sdk.fundPegin(psbt, 'average')
+
+      expect(funded.txInputs).toHaveLength(2)
+      expect(funded.data.inputs[0].nonWitnessUtxo).toBeUndefined()
+      expect(funded.data.inputs[1].nonWitnessUtxo).toEqual(Buffer.from(legacyTx.hex, 'hex'))
+      expect(() => funded.signInput(0, probeSigner)).not.toThrow()
+      expect(() => funded.signInput(1, probeSigner)).not.toThrow()
+    })
+
+    it('should refuse a UTXO held by a P2SH address', async () => {
+      const fundingTx = buildFundingTx(1_000_000, 0, 78, scriptsFor.p2sh())
+      mockedDataSource.getTxHex.mockResolvedValue(fundingTx.hex)
+      const utxo = { address: btcAddresses[3], txid: fundingTx.txid, vout: 0, amount: 1_000_000n }
+      const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [utxo])
+
+      const error = await sdk.fundPegin(psbt, 'average').catch((e) => e)
+
+      expect(error).toBeInstanceOf(UnsupportedAddressTypeError)
+      expect(error.address).toBe(btcAddresses[3])
+      expect(psbt.txInputs).toHaveLength(0)
+    })
+
+    it('should leave the PSBT untouched when it refuses a UTXO that is not the first one', async () => {
+      const segwitTx = buildFundingTx(900_000, 0, 83, scriptsFor.nativeSegwit())
+      const p2shTx = buildFundingTx(800_000, 0, 84, scriptsFor.p2sh())
+      mockedDataSource.getTxHex.mockImplementation((txid: string) => Promise.resolve(txid === segwitTx.txid ? segwitTx.hex : p2shTx.hex))
+      const utxos = [
+        { address: btcAddresses[4], txid: segwitTx.txid, vout: 0, amount: 900_000n },
+        { address: btcAddresses[3], txid: p2shTx.txid, vout: 0, amount: 800_000n },
+      ]
+      const psbt = await sdk.createPegin(1_200_000n, rskAddresses[0], utxos)
+      const outputsBefore = psbt.txOutputs.length
+
+      const error = await sdk.fundPegin(psbt, 'average').catch((e) => e)
+
+      expect(error).toBeInstanceOf(UnsupportedAddressTypeError)
+      expect(error.address).toBe(btcAddresses[3])
+      expect(psbt.txInputs).toHaveLength(0)
+      expect(psbt.txOutputs).toHaveLength(outputsBefore)
+      await expect(sdk.fundPegin(psbt, 'average')).rejects.toThrowError(UnsupportedAddressTypeError)
+    })
+  })
+
   it('should fail to create a peg-out with an amount below the minimum', async () => {
     await expect(sdk.createPegout('0.001', rskAddresses[0])).rejects.toThrowError(AmountBelowMinError)
   })

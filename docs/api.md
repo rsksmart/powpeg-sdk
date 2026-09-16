@@ -53,5 +53,6 @@ The package ships no `BitcoinSigner` implementations — see [`bitcoin-signers.m
 | `PegoutRejectedError` | class | Thrown when the peg-out transaction was mined but the Bridge rejected the release request; carries `reason` (1 below minimum, 2 caller is a contract, 3 fee above value — 1 and 3 are refunded, 2 is not), `txHash` and `amount`. |
 | `UnsupportedSenderError` | class | Thrown when the account asked to send a peg-out is a contract account, which the Bridge refuses to release BTC for. |
 | `TransactionRevertedError` | class | Thrown when the peg-out transaction was mined but reverted, so no release was requested; carries `txHash`. |
+| `UnsupportedAddressTypeError` | class | Thrown when a funding UTXO is held by a P2SH address, whose redeem script the SDK cannot derive; carries `address`. |
 | `WrongNetworkError` | class | Thrown when the signer's chain doesn't match the network the SDK was configured for. |
 | `InvalidFeeRateError` | class | Thrown when a fee rate from the configured `BitcoinDataSource` is missing, non-numeric, non-positive, exceeds the configured bound, or produces a fee disproportionate to the amount being sent. |

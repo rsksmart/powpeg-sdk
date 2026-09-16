@@ -116,6 +116,11 @@ The bare strings `'MAIN'` and `'TEST'` are still accepted, so either style works
 
 - `TrezorSigner` and `LedgerSigner` are no longer exported; supply your own `BitcoinSigner` (see
   [`bitcoin-signers.md`](./bitcoin-signers.md)).
+- A peg-in can no longer be funded from a P2SH (`2…`/`3…`) address: `fundPegin` throws
+  `UnsupportedAddressTypeError`. In 1.x such a UTXO was accepted and failed later inside the signer.
+  Legacy funding inputs now also carry `nonWitnessUtxo`, so they sign without the signer fetching the
+  parent transaction itself. Witness inputs do not carry it, so the PSBT does not grow by the size of
+  each parent transaction.
 - The constructor takes a single options object instead of nine positional parameters:
   `new PowPegSDK(signer, dataSource, 'TEST', undefined, apiUrl)` becomes
   `new PowPegSDK({ network: Network.TEST, bitcoinSigner: signer, bitcoinDataSource: dataSource, apiUrl })`.
@@ -126,8 +131,9 @@ The bare strings `'MAIN'` and `'TEST'` are still accepted, so either style works
   is rejected there (`invalid transaction key` when the signer signs the transaction itself, `invalid
   object key` through `JsonRpcSigner`). TypeScript catches such a field only when the request is written
   as a literal at the call site, not when it is built in a variable first.
-- Five error types are new — `SigningError`, `WrongNetworkError`, `PegoutRejectedError`,
-  `UnsupportedSenderError` and `TransactionRevertedError` — and `APIError.message` now derives from the
+- Six error types are new — `SigningError`, `WrongNetworkError`, `PegoutRejectedError`,
+  `UnsupportedSenderError`, `TransactionRevertedError` and `UnsupportedAddressTypeError` — and
+  `APIError.message` now derives from the
   API's own message rather than a
   constant: control characters are replaced with spaces and the text is capped at 300 characters, so a
   message that survives is the API's own wording but not necessarily byte-for-byte. Code that classifies
