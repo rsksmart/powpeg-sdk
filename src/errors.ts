@@ -126,8 +126,8 @@ export class TransactionRevertedError extends Error {
 
 /**
  * Thrown when a UTXO is held by an address whose type the SDK cannot build a signable PSBT input for.
- * A P2SH input needs a redeem script derived from the public key behind the address, and `BitcoinSigner`
- * exposes addresses only.
+ * A P2SH input is supported only as P2SH-P2WPKH, and only when the PSBT's signer implements
+ * `getPublicKey` and returns the key the address commits to.
  */
 export class UnsupportedAddressTypeError extends Error {
   readonly address: string

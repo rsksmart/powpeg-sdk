@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { crypto as bitcoinJsCrypto, networks, payments } from 'bitcoinjs-lib'
-import { isP2shScript, isWitnessProgramScript } from './utils'
+import { deriveP2shP2wpkhRedeemScript, isP2shScript, isWitnessProgramScript } from './utils'
 
 describe('isP2shScript', () => {
   const network = networks.testnet
@@ -60,5 +60,33 @@ describe('isWitnessProgramScript', () => {
     ['the program is longer than forty bytes', '0029' + '11'.repeat(41)],
   ])('should reject a script where %s', (_label, hex) => {
     expect(isWitnessProgramScript(Buffer.from(hex, 'hex'))).toBe(false)
+  })
+})
+
+describe('deriveP2shP2wpkhRedeemScript', () => {
+  const network = networks.testnet
+  const publicKey = '0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798'
+  const redeem = payments.p2wpkh({ pubkey: Buffer.from(publicKey, 'hex'), network })
+  const script = payments.p2sh({ redeem, network }).output as Buffer
+
+  it.each([
+    ['a bare key', publicKey],
+    ['a 0x-prefixed key', `0x${publicKey}`],
+    ['an uppercase key', publicKey.toUpperCase()],
+  ])('should return the P2WPKH redeem script for %s matching the P2SH hash', (_label, key) => {
+    expect(deriveP2shP2wpkhRedeemScript(script, key)).toEqual(redeem.output)
+  })
+
+  it.each([
+    ['a different key', '02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5'],
+    ['a key of the wrong length', publicKey.slice(0, 64)],
+    ['a non-string value', 42],
+    ['undefined', undefined],
+  ])('should return undefined for %s', (_label, key) => {
+    expect(deriveP2shP2wpkhRedeemScript(script, key)).toBeUndefined()
+  })
+
+  it('should return undefined for a script that is not P2SH', () => {
+    expect(deriveP2shP2wpkhRedeemScript(redeem.output as Buffer, publicKey)).toBeUndefined()
   })
 })

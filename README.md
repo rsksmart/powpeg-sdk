@@ -28,6 +28,22 @@ await sdk.signAndBroadcastPegout(tx, someEthersSigner)
 
 The SDK ships no signer implementations — see [`docs/bitcoin-signers.md`](./docs/bitcoin-signers.md) for the `BitcoinSigner` contract and how to supply one.
 
+## Supported Bitcoin address types
+
+| Script | Address format (main / test) | Fund a peg-in | Preferred for change | Refund address in the peg-in |
+|---|---|---|---|---|
+| P2PKH (legacy, BIP 44) | `1…` / `m…`, `n…` | yes | yes | yes |
+| P2SH-P2WPKH (nested segwit, BIP 49) | `3…` / `2…` | yes, if the signer implements `getPublicKey` | yes, if the signer implements `getPublicKey` | yes |
+| P2WPKH (native segwit, BIP 84) | `bc1q…` / `tb1q…` | yes | yes | no |
+| Other P2SH (multisig, P2SH-P2WSH) | `3…` / `2…` | no | no | no |
+| P2WSH | `bc1q…` / `tb1q…` (62 chars) | no | no | no |
+| P2TR (taproot, BIP 86) | `bc1p…` / `tb1p…` | no | no | no |
+
+Funding support is decided from each UTXO's `scriptPubKey`, not from the address format. A UTXO the SDK
+cannot sign is skipped when it discovers UTXOs itself, and refused with `UnsupportedAddressTypeError` when
+named in `selectedUtxos`. See [Address types and derivation](./docs/bitcoin-signers.md#address-types-and-derivation)
+for the details and the refund address rules.
+
 ## API Reference
 
 See [`docs/api.md`](./docs/api.md) for the full table of public exports (`PowPegSDK` and every exported type/error).
