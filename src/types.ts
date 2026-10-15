@@ -39,9 +39,9 @@ export interface BitcoinSigner {
   signTransaction(psbt: Psbt, inputs?: Utxo[], transactions?: string[]): Promise<string>
   /**
    * Compressed public key, as hex, behind one of the signer's P2SH-P2WPKH (nested segwit) addresses, or
-   * `undefined` if the signer does not know it. Optional: without it, UTXOs discovery finds at P2SH
-   * addresses are skipped, and P2SH UTXOs passed in `selectedUtxos` are refused with
-   * `UnsupportedAddressTypeError`.
+   * `undefined` if the signer does not know it. Optional: without it, or for an address whose key it
+   * does not return, UTXOs discovery finds at P2SH addresses are skipped, and P2SH UTXOs passed in
+   * `selectedUtxos` are refused with `UnsupportedAddressTypeError`.
    */
   getPublicKey?(address: string): Promise<string | undefined>
 }

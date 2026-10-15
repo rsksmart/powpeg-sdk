@@ -349,6 +349,10 @@ describe('sdk', () => {
     )
     const otherPublicKey = '02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5'
 
+    beforeEach(() => {
+      mockedDataSource.getOutputs.mockClear()
+    })
+
     const nestedSegwitSigner = (getPublicKey: BitcoinSigner['getPublicKey'] = vi.fn().mockResolvedValue(probePublicKey.toString('hex'))) => ({
       getNonChangeAddresses: vi.fn().mockResolvedValue([]),
       getChangeAddresses: vi.fn().mockResolvedValue([]),
@@ -388,6 +392,19 @@ describe('sdk', () => {
 
       expect(signer.getPublicKey).toHaveBeenCalledWith(probeP2shAddress)
       expect(signer.getPublicKey).not.toHaveBeenCalledWith(btcAddresses[3])
+    })
+
+    it('should name the address the UTXO script encodes in a refusal, not the one the UTXO claims', async () => {
+      const { fundingTx, utxo } = p2shUtxo(112)
+      mockedDataSource.getTxHex.mockResolvedValue(fundingTx.hex)
+      const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [{ ...utxo, address: btcAddresses[3] }], nestedSegwitSigner(vi.fn().mockResolvedValue(undefined)))
+
+      const error = await sdk.fundPegin(psbt, 'average').catch((e) => e)
+
+      expect(error).toBeInstanceOf(UnsupportedAddressTypeError)
+      expect(error.address).toBe(probeP2shAddress)
+      expect(error.message).toContain(probeP2shAddress)
+      expect(error.message).not.toContain(btcAddresses[3])
     })
 
     it('should fund from P2SH and native segwit UTXOs together, asking each address once', async () => {
@@ -480,13 +497,99 @@ describe('sdk', () => {
       expect(mockedDataSource.getOutputs).toHaveBeenCalledWith(probeP2shAddress)
       expect(funded.data.inputs[0].redeemScript).toEqual(probeRedeemScript)
       expect(funded.txOutputs.at(-1)?.address).toBe(changeP2shAddress)
+      expect(signer.getPublicKey).toHaveBeenCalledTimes(2)
+    })
+
+    it.each([
+      ['no public key', () => undefined],
+      ['a key that does not match it', () => otherPublicKey],
+    ])('should skip a discovered P2SH address the signer returns %s for, funding from the rest', async (_label, key) => {
+      const signer = {
+        ...nestedSegwitSigner(vi.fn().mockResolvedValue(key())),
+        getNonChangeAddresses: vi.fn().mockResolvedValue([probeP2shAddress, btcAddresses[4]]),
+        getChangeAddresses: vi.fn().mockResolvedValue([btcAddresses[0]]),
+      } satisfies BitcoinSigner
+      mockedDataSource.getAddressDetails.mockImplementation((address: string) => ({ address, balance: 2_000_000, txCount: 3 }))
+      const fundingTx = buildFundingTx(2_000_000, 0, 113, scriptsFor.nativeSegwit())
+      mockedDataSource.getTxHex.mockResolvedValue(fundingTx.hex)
+      mockedDataSource.getOutputs.mockImplementation((address: string) => [{ address, txid: fundingTx.txid, vout: 0, amount: 2_000_000n }])
+
+      const psbt = await sdk.createPegin(500_000n, rskAddresses[0], undefined, signer)
+      const { psbt: funded } = await sdk.fundPegin(psbt, 'average')
+
+      expect(mockedDataSource.getOutputs).toHaveBeenCalledWith(btcAddresses[4])
+      expect(mockedDataSource.getOutputs).not.toHaveBeenCalledWith(probeP2shAddress)
+      expect(funded.txInputs).toHaveLength(1)
+    })
+
+    it('should report a discovered P2SH balance it cannot sign as skipped instead of refusing it', async () => {
+      const signer = {
+        ...nestedSegwitSigner(vi.fn().mockResolvedValue(undefined)),
+        getNonChangeAddresses: vi.fn().mockResolvedValue([probeP2shAddress]),
+      } satisfies BitcoinSigner
+      mockedDataSource.getAddressDetails.mockImplementation((address: string) => ({ address, balance: 5_000_000, txCount: 3 }))
+
+      const psbt = await sdk.createPegin(500_000n, rskAddresses[0], undefined, signer)
+      const error = await sdk.fundPegin(psbt, 'average').catch((e) => e)
+
+      expect(error).toBeInstanceOf(NotEnoughFundsError)
+      expect(error.message).toContain('5000000 satoshis are held by addresses whose script type the SDK cannot build a signable input for')
+      expect(mockedDataSource.getOutputs).not.toHaveBeenCalledWith(probeP2shAddress)
+    })
+
+    it('should not send change to a P2SH address whose key the signer cannot resolve', async () => {
+      const signer = {
+        ...nestedSegwitSigner(vi.fn().mockResolvedValue(undefined)),
+        getNonChangeAddresses: vi.fn().mockResolvedValue([btcAddresses[1]]),
+        getChangeAddresses: vi.fn().mockResolvedValue([probeP2shAddress, btcAddresses[4]]),
+      } satisfies BitcoinSigner
+      mockedDataSource.getAddressDetails.mockImplementation((address: string) => ({ address, balance: 0, txCount: 0 }))
+      const fundingTx = buildFundingTx(2_000_000, 0, 114, scriptsFor.nativeSegwit())
+      mockedDataSource.getTxHex.mockResolvedValue(fundingTx.hex)
+      const utxo = { address: btcAddresses[4], txid: fundingTx.txid, vout: 0, amount: 2_000_000n }
+
+      const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [utxo], signer)
+      const { psbt: funded } = await sdk.fundPegin(psbt, 'average')
+
+      expect(funded.txOutputs.at(-1)?.address).toBe(btcAddresses[4])
+    })
+
+    it('should still build a peg-in when getPublicKey fails for a P2SH change address', async () => {
+      const signer = {
+        ...nestedSegwitSigner(vi.fn().mockRejectedValue(new Error('device disconnected'))),
+        getNonChangeAddresses: vi.fn().mockResolvedValue([btcAddresses[1]]),
+        getChangeAddresses: vi.fn().mockResolvedValue([probeP2shAddress, btcAddresses[4]]),
+      } satisfies BitcoinSigner
+      mockedDataSource.getAddressDetails.mockImplementation((address: string) => ({ address, balance: 0, txCount: 0 }))
+      const fundingTx = buildFundingTx(2_000_000, 0, 115, scriptsFor.nativeSegwit())
+      mockedDataSource.getTxHex.mockResolvedValue(fundingTx.hex)
+      const utxo = { address: btcAddresses[4], txid: fundingTx.txid, vout: 0, amount: 2_000_000n }
+
+      const psbt = await sdk.createPegin(500_000n, rskAddresses[0], [utxo], signer)
+      const { psbt: funded } = await sdk.fundPegin(psbt, 'average')
+
+      expect(funded.txOutputs.at(-1)?.address).toBe(btcAddresses[4])
+    })
+
+    it('should propagate an error thrown by getPublicKey during discovery', async () => {
+      const signer = {
+        ...nestedSegwitSigner(vi.fn().mockRejectedValue(new Error('device disconnected'))),
+        getNonChangeAddresses: vi.fn().mockResolvedValue([probeP2shAddress]),
+      } satisfies BitcoinSigner
+      mockedDataSource.getAddressDetails.mockImplementation((address: string) => ({ address, balance: 2_000_000, txCount: 3 }))
+
+      await expect(sdk.createPegin(500_000n, rskAddresses[0], undefined, signer)).rejects.toThrowError('device disconnected')
     })
 
     it('should fund a P2SH UTXO through createAndFundPsbt only when given a signer', async () => {
       const { fundingTx, utxo } = p2shUtxo(111)
       mockedDataSource.getTxHex.mockResolvedValue(fundingTx.hex)
 
-      await expect(sdk.createAndFundPsbt(500_000n, btcAddresses[4], [utxo], 'average')).rejects.toThrowError(UnsupportedAddressTypeError)
+      const error = await sdk.createAndFundPsbt(500_000n, btcAddresses[4], [utxo], 'average').catch((e) => e)
+      expect(error).toBeInstanceOf(UnsupportedAddressTypeError)
+      expect(error.message).toContain('no signer is bound to this PSBT')
+      expect(error.message).toContain('pass a signer to createAndFundPsbt')
+      expect(error.message).not.toContain('does not implement getPublicKey')
       const { psbt } = await sdk.createAndFundPsbt(500_000n, btcAddresses[4], [utxo], 'average', nestedSegwitSigner())
       expect(psbt.data.inputs[0].redeemScript).toEqual(probeRedeemScript)
     })

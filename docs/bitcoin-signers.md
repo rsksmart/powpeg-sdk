@@ -52,12 +52,13 @@ script from it, and adds the input only if hashing that script reproduces the P2
 input then carries `redeemScript` and `witnessUtxo`, plus the parent transaction in `nonWitnessUtxo`, so a
 signer built on bitcoinjs-lib can sign and finalize it without adding anything.
 
-`fundPegin` throws `UnsupportedAddressTypeError` naming the address when the signer doesn't implement
-`getPublicKey`, returns `undefined`, returns anything but a compressed public key, or returns a key whose
-P2SH-P2WPKH script doesn't match — which is also what any other P2SH script, such as a multisig or a
-P2SH-P2WSH, gets. Each address is asked once per `fundPegin` call, in input order, and an error thrown by
-`getPublicKey` propagates unchanged. A PSBT from `createAndFundPsbt` without a `signer` has no signer to
-ask, so its P2SH UTXOs are refused too.
+`fundPegin` throws `UnsupportedAddressTypeError` naming the address the UTXO's script encodes when the
+signer doesn't implement `getPublicKey`, returns `undefined`, returns anything but a compressed public key,
+or returns a key whose P2SH-P2WPKH script doesn't match — which is also what any other P2SH script, such as
+a multisig or a P2SH-P2WSH, gets. Each address is asked once per peg-in, in order: a key `createPegin`
+already resolved during discovery is reused by `fundPegin`. An error thrown by `getPublicKey` propagates
+unchanged from either, except while choosing the change address, where it only rules that address out. A PSBT from `createAndFundPsbt` without a `signer` has no signer to ask, so its P2SH
+UTXOs are refused with an error that says to pass one.
 
 ### Unsupported scripts
 
@@ -68,7 +69,7 @@ complete PSBT input for it. Fund from a legacy, nested segwit or native segwit a
 leaves it exactly as `createPegin` returned it — no inputs added, no change output, and still fundable.
 
 When `createPegin` discovers UTXOs itself, it looks only at the signer's legacy and native segwit
-addresses, plus its nested segwit ones when the signer implements `getPublicKey`, so a wallet holding
+addresses, plus the nested segwit ones whose key `getPublicKey` returns and matches, so a wallet holding
 several types funds a peg-in from the part the SDK can sign. If what remains
 does not cover the amount, `NotEnoughFundsError` says how much was left out. The same preference applies
 to the change address: change goes to the first unused change address the SDK could fund from later,
