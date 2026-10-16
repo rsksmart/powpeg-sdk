@@ -40,7 +40,7 @@ export interface BitcoinSigner {
   /**
    * Compressed public key, as hex, behind one of the signer's P2SH-P2WPKH (nested segwit) addresses, or
    * `undefined` if the signer does not know it. Optional: without it, or for an address whose key it
-   * does not return, UTXOs discovery finds at P2SH addresses are skipped, and P2SH UTXOs passed in
+   * does not return, UTXOs discovered at P2SH addresses are skipped, and P2SH UTXOs passed in
    * `selectedUtxos` are refused with `UnsupportedAddressTypeError`.
    */
   getPublicKey?(address: string): Promise<string | undefined>
