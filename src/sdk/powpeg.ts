@@ -2,7 +2,7 @@ import { address, payments, Psbt, Transaction } from 'bitcoinjs-lib'
 import type { BitcoinDataSource, BitcoinSigner, Utxo, FeeLevel, AddressWithDetails, PegoutFeeEstimation, Feature, TxType, UnsignedPegin, UnsignedPegout, PowPegSDKOptions, RejectedPegoutReason } from '../types'
 import { RejectedPegoutReasons } from '../types'
 import { networks, type Network } from '../constants'
-import { getAddressType, isP2shScript, isSupportedFundingScript, isWitnessProgramScript, remove0x } from '../utils'
+import { deriveP2shP2wpkhRedeemScript, getAddressType, isP2shScript, isSupportedFundingScript, isWitnessProgramScript, remove0x } from '../utils'
 import { Bridge } from '../bridge'
 import { ApiService } from '../api/api'
 import * as sdkErrors from '../errors'
@@ -19,7 +19,7 @@ export class PowPegSDK {
   private pegInOutputs = 3
   private powpegRsktHeader = '52534b5401'
   private burnDustMaxValue = 30_000
-  private funding = new WeakMap<Psbt, { utxos: Utxo[], changeAddress?: string, skippedSatoshis: bigint }>()
+  private funding = new WeakMap<Psbt, { utxos: Utxo[], changeAddress?: string, skippedSatoshis: bigint, publicKeys: Map<string, string | undefined> }>()
   private psbtSigner = new WeakMap<Psbt, BitcoinSigner>()
   private minPeginAmount = 500_000n
   private peginFeeEstimationInputs = 2
@@ -146,13 +146,28 @@ export class PowPegSDK {
     return { used, unused }
   }
 
-  private isSpendableAddress(btcAddress: string) {
+  /**
+   * Whether the SDK can build a signable input for a UTXO held by `btcAddress`. A P2SH address counts only
+   * when `signer` returns a public key whose P2SH-P2WPKH script matches it; the key is cached in `publicKeys`.
+   */
+  private async isSpendableAddress(btcAddress: string, signer: BitcoinSigner, publicKeys: Map<string, string | undefined>) {
+    let script: Buffer
     try {
-      return isSupportedFundingScript(address.toOutputScript(btcAddress, this.btcNetworkConfig.lib))
+      script = address.toOutputScript(btcAddress, this.btcNetworkConfig.lib)
     }
     catch {
       return false
     }
+    if (isSupportedFundingScript(script)) {
+      return true
+    }
+    if (!isP2shScript(script) || typeof signer.getPublicKey !== 'function') {
+      return false
+    }
+    if (!publicKeys.has(btcAddress)) {
+      publicKeys.set(btcAddress, await signer.getPublicKey(btcAddress))
+    }
+    return deriveP2shP2wpkhRedeemScript(script, publicKeys.get(btcAddress)) !== undefined
   }
 
   private groupAddressesByBalance(addresses: AddressWithDetails[]) {
@@ -272,6 +287,7 @@ export class PowPegSDK {
     })
     let utxos: Utxo[]
     let skippedSatoshis = 0n
+    const publicKeys = new Map<string, string | undefined>()
     if (selectedUtxos) {
       utxos = [...selectedUtxos]
     }
@@ -281,15 +297,27 @@ export class PowPegSDK {
         throw new sdkErrors.SigningError('The signer derived no addresses, so there is nothing to discover UTXOs from. Pass selectedUtxos to fund from a set you resolved yourself.')
       }
       const { withBalance } = this.groupAddressesByBalance(usedAddresses)
-      const spendable = withBalance.filter((address) => this.isSpendableAddress(address.address))
-      skippedSatoshis = withBalance
-        .filter((address) => !this.isSpendableAddress(address.address))
-        .reduce((total, address) => total + BigInt(address.balance), 0n)
+      const spendable: AddressWithDetails[] = []
+      for (const address of withBalance) {
+        if (await this.isSpendableAddress(address.address, signer, publicKeys)) {
+          spendable.push(address)
+        }
+        else {
+          skippedSatoshis += BigInt(address.balance)
+        }
+      }
       utxos = await this.getUtxos(spendable)
     }
-    const changeAddress = addresses.change.unused.find((address) => this.isSpendableAddress(address.address))
-      ?? addresses.change.unused[0]
-    this.funding.set(psbt, { utxos, changeAddress: changeAddress?.address, skippedSatoshis })
+    let changeAddress: AddressWithDetails | undefined
+    for (const address of addresses.change.unused) {
+      // A failed key lookup only rules this address out as change; it must not fail the peg-in.
+      if (await this.isSpendableAddress(address.address, signer, publicKeys).catch(() => false)) {
+        changeAddress = address
+        break
+      }
+    }
+    changeAddress ??= addresses.change.unused[0]
+    this.funding.set(psbt, { utxos, changeAddress: changeAddress?.address, skippedSatoshis, publicKeys })
     this.psbtSigner.set(psbt, signer)
 
     return psbt
@@ -355,6 +383,55 @@ export class PowPegSDK {
   }
 
   /**
+   * Redeem script for each funding input: undefined for P2PKH and P2WPKH, the P2SH-P2WPKH redeem script
+   * built from the public key `signer` reports for a P2SH input. Each address is asked once, and not at all
+   * when `publicKeys` already holds its key.
+   * @throws {UnsupportedAddressTypeError} If an input's script is neither, or its redeem script cannot be resolved.
+   */
+  private async resolveRedeemScripts(inputs: Utxo[], scripts: Buffer[], publicKeys: Map<string, string | undefined>, signer?: BitcoinSigner): Promise<(Buffer | undefined)[]> {
+    const redeemScripts: (Buffer | undefined)[] = []
+    for (const [index, input] of inputs.entries()) {
+      const script = scripts[index]
+      if (isSupportedFundingScript(script)) {
+        redeemScripts.push(undefined)
+        continue
+      }
+      const suffix = 'Fund the peg-in from a legacy (P2PKH), nested segwit (P2SH-P2WPKH) or native segwit (P2WPKH) address, or pass selectedUtxos that exclude this one.'
+      if (!isP2shScript(script)) {
+        throw new sdkErrors.UnsupportedAddressTypeError(
+          input.address,
+          `UTXO ${input.txid}:${input.vout} is held by ${input.address}, whose script type the SDK cannot build a signable input for. ${suffix}`,
+        )
+      }
+      if (!signer) {
+        throw new sdkErrors.UnsupportedAddressTypeError(
+          input.address,
+          `UTXO ${input.txid}:${input.vout} is held by the P2SH address ${input.address}. Signing it needs the public key behind the address, and no signer is bound to this PSBT to ask for it; pass a signer to createAndFundPsbt. ${suffix}`,
+        )
+      }
+      if (typeof signer.getPublicKey !== 'function') {
+        throw new sdkErrors.UnsupportedAddressTypeError(
+          input.address,
+          `UTXO ${input.txid}:${input.vout} is held by the P2SH address ${input.address}. Signing it needs the public key behind the address, and the signer bound to this PSBT does not implement getPublicKey. ${suffix}`,
+        )
+      }
+      const owner = address.fromOutputScript(script, this.btcNetworkConfig.lib)
+      if (!publicKeys.has(owner)) {
+        publicKeys.set(owner, await signer.getPublicKey(owner))
+      }
+      const redeemScript = deriveP2shP2wpkhRedeemScript(script, publicKeys.get(owner))
+      if (!redeemScript) {
+        throw new sdkErrors.UnsupportedAddressTypeError(
+          owner,
+          `UTXO ${input.txid}:${input.vout} is held by the P2SH address ${owner}, and the signer returned no compressed public key whose P2SH-P2WPKH script matches it. Only P2SH-wrapped P2WPKH is supported. ${suffix}`,
+        )
+      }
+      redeemScripts.push(redeemScript)
+    }
+    return redeemScripts
+  }
+
+  /**
    * Adds funding inputs (and a change output, if above the dust threshold) to an existing peg-in PSBT,
    * using the UTXOs previously selected by {@link createPegin} or {@link createAndFundPsbt}.
    * @param {Psbt} psbt - The peg-in PSBT to fund.
@@ -385,18 +462,7 @@ export class PowPegSDK {
       )
       return output
     })
-    inputs.forEach((input, index) => {
-      const script = parsedOutputs[index].script
-      if (!isSupportedFundingScript(script)) {
-        const detail = isP2shScript(script)
-          ? `the P2SH address ${input.address}. Signing it needs a redeem script the SDK cannot derive, because BitcoinSigner exposes addresses but not the public keys behind them.`
-          : `${input.address}, whose script type the SDK cannot build a signable input for.`
-        throw new sdkErrors.UnsupportedAddressTypeError(
-          input.address,
-          `UTXO ${input.txid}:${input.vout} is held by ${detail} Fund the peg-in from a legacy (P2PKH) or native segwit (P2WPKH) address, or pass selectedUtxos that exclude this one.`,
-        )
-      }
-    })
+    const redeemScripts = await this.resolveRedeemScripts(inputs, parsedOutputs.map((output) => output.script), funding.publicKeys, this.psbtSigner.get(psbt))
     const initialInputCount = psbt.txInputs.length
     const initialOutputCount = psbt.txOutputs.length
     const addChange = change > Math.min(this.burnDustValue, this.burnDustMaxValue)
@@ -411,15 +477,17 @@ export class PowPegSDK {
     }
     inputs.forEach((input, index) => {
       const output = parsedOutputs[index]
+      const redeemScript = redeemScripts[index]
       psbt.addInput({
         hash: input.txid,
         index: input.vout,
-        // A witness input is signed from witnessUtxo alone; a legacy input needs its parent transaction.
+        // A native witness input is signed from witnessUtxo alone; legacy and P2SH inputs also carry their parent transaction.
         ...(isWitnessProgramScript(output.script) ? {} : { nonWitnessUtxo: Buffer.from(hexTransactions[index], 'hex') }),
         witnessUtxo: {
           script: output.script,
           value: output.value,
         },
+        ...(redeemScript ? { redeemScript } : {}),
       })
     })
     const expectedInputCount = initialInputCount + inputs.length
@@ -463,7 +531,7 @@ export class PowPegSDK {
       address: recipientAddress,
       value: Number(amount),
     })
-    this.funding.set(psbt, { utxos: [...utxos], skippedSatoshis: 0n })
+    this.funding.set(psbt, { utxos: [...utxos], skippedSatoshis: 0n, publicKeys: new Map() })
     if (signer) {
       this.psbtSigner.set(psbt, signer)
     }
