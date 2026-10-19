@@ -299,7 +299,8 @@ export class PowPegSDK {
       const { withBalance } = this.groupAddressesByBalance(usedAddresses)
       const spendable: AddressWithDetails[] = []
       for (const address of withBalance) {
-        if (await this.isSpendableAddress(address.address, signer, publicKeys)) {
+        // A failed key lookup only leaves this address out of discovery, like an address with no key.
+        if (await this.isSpendableAddress(address.address, signer, publicKeys).catch(() => false)) {
           spendable.push(address)
         }
         else {

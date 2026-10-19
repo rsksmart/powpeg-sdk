@@ -57,7 +57,8 @@ signer doesn't implement `getPublicKey`, returns `undefined`, returns anything b
 or returns a key whose P2SH-P2WPKH script doesn't match — which is also what any other P2SH script, such as
 a multisig or a P2SH-P2WSH, gets. Each address is asked once per peg-in, in order: a key `createPegin`
 already resolved during discovery is reused by `fundPegin`. An error thrown by `getPublicKey` propagates
-unchanged from either, except while choosing the change address, where it only rules that address out. A PSBT from `createAndFundPsbt` without a `signer` has no signer to ask, so its P2SH
+unchanged from `fundPegin`. While `createPegin` discovers UTXOs or chooses the change address, it only rules
+that address out, and a discovered address it rules out has its balance reported as skipped. A PSBT from `createAndFundPsbt` without a `signer` has no signer to ask, so its P2SH
 UTXOs are refused with an error that says to pass one.
 
 ### Unsupported scripts

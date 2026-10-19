@@ -571,14 +571,36 @@ describe('sdk', () => {
       expect(funded.txOutputs.at(-1)?.address).toBe(btcAddresses[4])
     })
 
-    it('should propagate an error thrown by getPublicKey during discovery', async () => {
+    it('should skip a discovered P2SH address whose getPublicKey throws, funding from the rest', async () => {
+      const signer = {
+        ...nestedSegwitSigner(vi.fn().mockRejectedValue(new Error('device disconnected'))),
+        getNonChangeAddresses: vi.fn().mockResolvedValue([probeP2shAddress, btcAddresses[4]]),
+        getChangeAddresses: vi.fn().mockResolvedValue([btcAddresses[0]]),
+      } satisfies BitcoinSigner
+      mockedDataSource.getAddressDetails.mockImplementation((address: string) => ({ address, balance: 2_000_000, txCount: 3 }))
+      const fundingTx = buildFundingTx(2_000_000, 0, 114, scriptsFor.nativeSegwit())
+      mockedDataSource.getTxHex.mockResolvedValue(fundingTx.hex)
+      mockedDataSource.getOutputs.mockImplementation((address: string) => [{ address, txid: fundingTx.txid, vout: 0, amount: 2_000_000n }])
+
+      const psbt = await sdk.createPegin(500_000n, rskAddresses[0], undefined, signer)
+      const { psbt: funded } = await sdk.fundPegin(psbt, 'average')
+
+      expect(mockedDataSource.getOutputs).not.toHaveBeenCalledWith(probeP2shAddress)
+      expect(funded.txInputs).toHaveLength(1)
+    })
+
+    it('should report a discovered P2SH balance whose getPublicKey throws as skipped', async () => {
       const signer = {
         ...nestedSegwitSigner(vi.fn().mockRejectedValue(new Error('device disconnected'))),
         getNonChangeAddresses: vi.fn().mockResolvedValue([probeP2shAddress]),
       } satisfies BitcoinSigner
       mockedDataSource.getAddressDetails.mockImplementation((address: string) => ({ address, balance: 2_000_000, txCount: 3 }))
 
-      await expect(sdk.createPegin(500_000n, rskAddresses[0], undefined, signer)).rejects.toThrowError('device disconnected')
+      const psbt = await sdk.createPegin(500_000n, rskAddresses[0], undefined, signer)
+      const error = await sdk.fundPegin(psbt, 'average').catch((e) => e)
+
+      expect(error).toBeInstanceOf(NotEnoughFundsError)
+      expect(error.message).toContain('2000000 satoshis are held by addresses')
     })
 
     it('should fund a P2SH UTXO through createAndFundPsbt only when given a signer', async () => {
