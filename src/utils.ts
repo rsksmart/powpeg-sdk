@@ -1,4 +1,4 @@
-import { crypto } from 'bitcoinjs-lib'
+import { payments } from 'bitcoinjs-lib'
 import type { Network } from './constants'
 
 export function remove0x(hex: string) {
@@ -67,16 +67,17 @@ export function isP2wpkhScript(script: Buffer) {
  * the address alone: P2PKH and P2WPKH. A P2SH-P2WPKH input also needs its redeem script, see
  * {@link deriveP2shP2wpkhRedeemScript}; every other type is unsupported.
  */
-export function isSupportedFundingScript(script: Buffer) {
+export function isFullySupportedFundingScript(script: Buffer) {
   return isP2pkhScript(script) || isP2wpkhScript(script)
 }
 
 /**
  * The redeem script of a P2SH-P2WPKH scriptPubKey: the P2WPKH program of `publicKeyHex`, returned only
  * when its hash160 is the hash `script` commits to. Undefined for any other script, for a key that is
- * not a compressed hex public key, and for a key that does not match.
+ * not a compressed hex public key, and for a key that does not match. Encoding the key as hex is up to the
+ * caller.
  */
-export function deriveP2shP2wpkhRedeemScript(script: Buffer, publicKeyHex: unknown): Buffer | undefined {
+export function deriveP2shP2wpkhRedeemScript(script: Buffer, publicKeyHex: string | undefined): Buffer | undefined {
   if (!isP2shScript(script) || typeof publicKeyHex !== 'string') {
     return undefined
   }
@@ -84,6 +85,11 @@ export function deriveP2shP2wpkhRedeemScript(script: Buffer, publicKeyHex: unkno
   if (!/^0[23][0-9a-fA-F]{64}$/.test(publicKey)) {
     return undefined
   }
-  const redeemScript = Buffer.concat([Buffer.from([0x00, 0x14]), crypto.hash160(Buffer.from(publicKey, 'hex'))])
-  return crypto.hash160(redeemScript).equals(script.subarray(2, 22)) ? redeemScript : undefined
+  try {
+    const redeem = payments.p2wpkh({ pubkey: Buffer.from(publicKey, 'hex') })
+    return payments.p2sh({ redeem }).output?.equals(script) ? redeem.output : undefined
+  }
+  catch {
+    return undefined
+  }
 }

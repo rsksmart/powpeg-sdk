@@ -80,7 +80,7 @@ describe('deriveP2shP2wpkhRedeemScript', () => {
   it.each([
     ['a different key', '02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5'],
     ['a key of the wrong length', publicKey.slice(0, 64)],
-    ['a non-string value', 42],
+    ['a non-string value', 42 as unknown as string],
     ['undefined', undefined],
   ])('should return undefined for %s', (_label, key) => {
     expect(deriveP2shP2wpkhRedeemScript(script, key)).toBeUndefined()

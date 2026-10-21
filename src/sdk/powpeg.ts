@@ -2,7 +2,7 @@ import { address, payments, Psbt, Transaction } from 'bitcoinjs-lib'
 import type { BitcoinDataSource, BitcoinSigner, Utxo, FeeLevel, AddressWithDetails, PegoutFeeEstimation, Feature, TxType, UnsignedPegin, UnsignedPegout, PowPegSDKOptions, RejectedPegoutReason } from '../types'
 import { RejectedPegoutReasons } from '../types'
 import { networks, type Network } from '../constants'
-import { deriveP2shP2wpkhRedeemScript, getAddressType, isP2shScript, isSupportedFundingScript, isWitnessProgramScript, remove0x } from '../utils'
+import { deriveP2shP2wpkhRedeemScript, getAddressType, isP2shScript, isFullySupportedFundingScript, isWitnessProgramScript, remove0x } from '../utils'
 import { Bridge } from '../bridge'
 import { ApiService } from '../api/api'
 import * as sdkErrors from '../errors'
@@ -158,14 +158,14 @@ export class PowPegSDK {
     catch {
       return false
     }
-    if (isSupportedFundingScript(script)) {
+    if (isFullySupportedFundingScript(script)) {
       return true
     }
-    if (!isP2shScript(script) || typeof signer.getPublicKey !== 'function') {
+    if (!isP2shScript(script)) {
       return false
     }
     if (!publicKeys.has(btcAddress)) {
-      publicKeys.set(btcAddress, await signer.getPublicKey(btcAddress))
+      publicKeys.set(btcAddress, await signer.getPublicKey?.(btcAddress))
     }
     return deriveP2shP2wpkhRedeemScript(script, publicKeys.get(btcAddress)) !== undefined
   }
@@ -384,52 +384,58 @@ export class PowPegSDK {
   }
 
   /**
-   * Redeem script for each funding input: undefined for P2PKH and P2WPKH, the P2SH-P2WPKH redeem script
-   * built from the public key `signer` reports for a P2SH input. Each address is asked once, and not at all
-   * when `publicKeys` already holds its key.
+   * Redeem script for each funding input, resolved in order; see {@link PowPegSDK.resolveRedeemScript}.
    * @throws {UnsupportedAddressTypeError} If an input's script is neither, or its redeem script cannot be resolved.
    */
   private async resolveRedeemScripts(inputs: Utxo[], scripts: Buffer[], publicKeys: Map<string, string | undefined>, signer?: BitcoinSigner): Promise<(Buffer | undefined)[]> {
     const redeemScripts: (Buffer | undefined)[] = []
     for (const [index, input] of inputs.entries()) {
-      const script = scripts[index]
-      if (isSupportedFundingScript(script)) {
-        redeemScripts.push(undefined)
-        continue
-      }
-      const suffix = 'Fund the peg-in from a legacy (P2PKH), nested segwit (P2SH-P2WPKH) or native segwit (P2WPKH) address, or pass selectedUtxos that exclude this one.'
-      if (!isP2shScript(script)) {
-        throw new sdkErrors.UnsupportedAddressTypeError(
-          input.address,
-          `UTXO ${input.txid}:${input.vout} is held by ${input.address}, whose script type the SDK cannot build a signable input for. ${suffix}`,
-        )
-      }
-      if (!signer) {
-        throw new sdkErrors.UnsupportedAddressTypeError(
-          input.address,
-          `UTXO ${input.txid}:${input.vout} is held by the P2SH address ${input.address}. Signing it needs the public key behind the address, and no signer is bound to this PSBT to ask for it; pass a signer to createAndFundPsbt. ${suffix}`,
-        )
-      }
-      if (typeof signer.getPublicKey !== 'function') {
-        throw new sdkErrors.UnsupportedAddressTypeError(
-          input.address,
-          `UTXO ${input.txid}:${input.vout} is held by the P2SH address ${input.address}. Signing it needs the public key behind the address, and the signer bound to this PSBT does not implement getPublicKey. ${suffix}`,
-        )
-      }
-      const owner = address.fromOutputScript(script, this.btcNetworkConfig.lib)
-      if (!publicKeys.has(owner)) {
-        publicKeys.set(owner, await signer.getPublicKey(owner))
-      }
-      const redeemScript = deriveP2shP2wpkhRedeemScript(script, publicKeys.get(owner))
-      if (!redeemScript) {
-        throw new sdkErrors.UnsupportedAddressTypeError(
-          owner,
-          `UTXO ${input.txid}:${input.vout} is held by the P2SH address ${owner}, and the signer returned no compressed public key whose P2SH-P2WPKH script matches it. Only P2SH-wrapped P2WPKH is supported. ${suffix}`,
-        )
-      }
-      redeemScripts.push(redeemScript)
+      redeemScripts.push(await this.resolveRedeemScript(input, scripts[index], publicKeys, signer))
     }
     return redeemScripts
+  }
+
+  /**
+   * Redeem script of one funding input: undefined for P2PKH and P2WPKH, the P2SH-P2WPKH redeem script
+   * built from the public key `signer` reports for a P2SH input. The address is asked once, and not at all
+   * when `publicKeys` already holds its key.
+   * @throws {UnsupportedAddressTypeError} If the input's script is neither, or its redeem script cannot be resolved.
+   */
+  private async resolveRedeemScript(input: Utxo, script: Buffer, publicKeys: Map<string, string | undefined>, signer?: BitcoinSigner): Promise<Buffer | undefined> {
+    if (isFullySupportedFundingScript(script)) {
+      return undefined
+    }
+    const suffix = 'Fund the peg-in from a legacy (P2PKH), nested segwit (P2SH-P2WPKH) or native segwit (P2WPKH) address, or pass selectedUtxos that exclude this one.'
+    if (!isP2shScript(script)) {
+      throw new sdkErrors.UnsupportedAddressTypeError(
+        input.address,
+        `UTXO ${input.txid}:${input.vout} is held by ${input.address}, whose script type the SDK cannot build a signable input for. ${suffix}`,
+      )
+    }
+    if (!signer) {
+      throw new sdkErrors.UnsupportedAddressTypeError(
+        input.address,
+        `UTXO ${input.txid}:${input.vout} is held by the P2SH address ${input.address}. Signing it needs the public key behind the address, and no signer is bound to this PSBT to ask for it; pass a signer to createAndFundPsbt. ${suffix}`,
+      )
+    }
+    if (typeof signer.getPublicKey !== 'function') {
+      throw new sdkErrors.UnsupportedAddressTypeError(
+        input.address,
+        `UTXO ${input.txid}:${input.vout} is held by the P2SH address ${input.address}. Signing it needs the public key behind the address, and the signer bound to this PSBT does not implement getPublicKey. ${suffix}`,
+      )
+    }
+    const owner = address.fromOutputScript(script, this.btcNetworkConfig.lib)
+    if (!publicKeys.has(owner)) {
+      publicKeys.set(owner, await signer.getPublicKey(owner))
+    }
+    const redeemScript = deriveP2shP2wpkhRedeemScript(script, publicKeys.get(owner))
+    if (!redeemScript) {
+      throw new sdkErrors.UnsupportedAddressTypeError(
+        owner,
+        `UTXO ${input.txid}:${input.vout} is held by the P2SH address ${owner}, and the signer returned no compressed public key whose P2SH-P2WPKH script matches it. Only P2SH-wrapped P2WPKH is supported. ${suffix}`,
+      )
+    }
+    return redeemScript
   }
 
   /**
