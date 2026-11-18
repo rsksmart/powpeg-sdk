@@ -1,3 +1,4 @@
+import { payments } from 'bitcoinjs-lib'
 import type { Network } from './constants'
 
 export function remove0x(hex: string) {
@@ -62,10 +63,33 @@ export function isP2wpkhScript(script: Buffer) {
 }
 
 /**
- * Whether the SDK can build a PSBT input a `BitcoinSigner` is able to sign for this scriptPubKey.
- * P2PKH and P2WPKH are signable from the address alone; every other type needs a redeem script, a
- * witness script or a key the signer contract does not expose.
+ * Whether the SDK can build a PSBT input a `BitcoinSigner` is able to sign for this scriptPubKey from
+ * the address alone: P2PKH and P2WPKH. A P2SH-P2WPKH input also needs its redeem script, see
+ * {@link deriveP2shP2wpkhRedeemScript}; every other type is unsupported.
  */
-export function isSupportedFundingScript(script: Buffer) {
+export function isFullySupportedFundingScript(script: Buffer) {
   return isP2pkhScript(script) || isP2wpkhScript(script)
+}
+
+/**
+ * The redeem script of a P2SH-P2WPKH scriptPubKey: the P2WPKH program of `publicKeyHex`, returned only
+ * when its hash160 is the hash `script` commits to. Undefined for any other script, for a key that is
+ * not a compressed hex public key, and for a key that does not match. Encoding the key as hex is up to the
+ * caller.
+ */
+export function deriveP2shP2wpkhRedeemScript(script: Buffer, publicKeyHex: string | undefined): Buffer | undefined {
+  if (!isP2shScript(script) || typeof publicKeyHex !== 'string') {
+    return undefined
+  }
+  const publicKey = remove0x(publicKeyHex.trim())
+  if (!/^0[23][0-9a-fA-F]{64}$/.test(publicKey)) {
+    return undefined
+  }
+  try {
+    const redeem = payments.p2wpkh({ pubkey: Buffer.from(publicKey, 'hex') })
+    return payments.p2sh({ redeem }).output?.equals(script) ? redeem.output : undefined
+  }
+  catch {
+    return undefined
+  }
 }
