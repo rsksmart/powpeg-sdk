@@ -116,15 +116,17 @@ The bare strings `'MAIN'` and `'TEST'` are still accepted, so either style works
 
 - `TrezorSigner` and `LedgerSigner` are no longer exported; supply your own `BitcoinSigner` (see
   [`bitcoin-signers.md`](./bitcoin-signers.md)).
-- A peg-in can only be funded from P2PKH and P2WPKH UTXOs; anything else — P2SH (`2…`/`3…`), P2WSH,
-  taproot, a bare multisig — makes `fundPegin` throw `UnsupportedAddressTypeError`. In 1.x such a UTXO was
-  accepted and failed later inside the signer, except a bare multisig, which did sign.
+- A peg-in can only be funded from P2PKH, P2WPKH and P2SH-P2WPKH UTXOs, the last only when the signer
+  implements `getPublicKey`; anything else — another P2SH (`2…`/`3…`), P2WSH, taproot, a bare multisig —
+  makes `fundPegin` throw `UnsupportedAddressTypeError`. In 1.x such a UTXO was accepted and failed later
+  inside the signer, except a bare multisig, which did sign.
+  Legacy and nested segwit funding inputs now also carry `nonWitnessUtxo`, so they sign without the
+  signer fetching the parent transaction itself; nested segwit inputs carry their `redeemScript` too.
+  Native segwit inputs do not carry `nonWitnessUtxo`, so the PSBT does not grow by the size of each
+  parent transaction.
 - `maxBundleSize`, `burnDustValue`, `maxFeeRateSatPerByte` and `maxFeeToAmountRatio` are validated at
   construction, and `signAndBroadcastPegout` refuses a request addressed anywhere but the bridge, or one
   carrying calldata.
-  Legacy funding inputs now also carry `nonWitnessUtxo`, so they sign without the signer fetching the
-  parent transaction itself. Witness inputs do not carry it, so the PSBT does not grow by the size of
-  each parent transaction.
 - The constructor takes a single options object instead of nine positional parameters:
   `new PowPegSDK(signer, dataSource, 'TEST', undefined, apiUrl)` becomes
   `new PowPegSDK({ network: Network.TEST, bitcoinSigner: signer, bitcoinDataSource: dataSource, apiUrl })`.
